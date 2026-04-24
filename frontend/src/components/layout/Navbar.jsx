@@ -1,9 +1,9 @@
 import CtaButton from '../common/CtaButton'
 
-function Navbar({ brand, links, ctaLabel, ctaHref }) {
+function Navbar({ brand, links, ctaLabel, ctaHref, onCtaClick }) {
   return (
     <header className="navbar">
-      <a className="navbar__brand" href="#hero">
+      <a className="navbar__brand" href="/">
         {brand}
       </a>
 
@@ -16,7 +16,7 @@ function Navbar({ brand, links, ctaLabel, ctaHref }) {
       </nav>
 
       <div className="navbar__cta">
-        <CtaButton label={ctaLabel} href={ctaHref} />
+        <CtaButton label={ctaLabel} href={ctaHref} onClick={onCtaClick} />
       </div>
     </header>
   )

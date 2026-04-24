@@ -1,12 +1,24 @@
+import { useEffect, useState } from 'react'
 import Navbar from './components/layout/Navbar'
 import BorderGlow from './components/common/BorderGlow'
 import Section from './components/layout/Section'
 import Beams from './components/backgrounds/Beams'
 import CursorGlow from './components/backgrounds/CursorGlow'
 import GradientText from './components/text/GradientText'
+import AuthPage from './components/auth/AuthPage'
+import { getMe } from './lib/authApi'
 import './App.css'
 
+function getRouteFromPath(pathname) {
+  if (pathname === '/signin') return 'signin'
+  if (pathname === '/signup') return 'signup'
+  return 'home'
+}
+
 function App() {
+  const [route, setRoute] = useState(getRouteFromPath(window.location.pathname))
+  const [currentUser, setCurrentUser] = useState(null)
+
   const navLinks = [
     { label: 'How it works', href: '#how-it-works' },
     { label: 'Use cases', href: '#use-cases' },
@@ -63,13 +75,42 @@ function App() {
     },
   ]
 
+  useEffect(() => {
+    const token = localStorage.getItem('genos_access_token')
+    if (!token) return
+
+    getMe(token)
+      .then((user) => setCurrentUser(user))
+      .catch(() => {
+        localStorage.removeItem('genos_access_token')
+      })
+  }, [])
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setRoute(getRouteFromPath(window.location.pathname))
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [])
+
+  const navigateTo = (path) => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path)
+    }
+    setRoute(getRouteFromPath(path))
+  }
+
+  const authMode = route === 'signin' ? 'signin' : route === 'signup' ? 'signup' : null
+
   return (
     <div className="landing-page">
       <div className="landing-page__background" aria-hidden="true">
         <Beams
-          beamWidth={0.4}
-          beamHeight={20}
-          beamNumber={34}
+          beamWidth={1}
+          beamHeight={24}
+          beamNumber={22}
           lightColor="#8b5fb0"
           beamColor="#170f24"
           backgroundColor="#141126"
@@ -84,12 +125,27 @@ function App() {
       <CursorGlow />
       <Navbar
         brand="GenOS"
-        links={navLinks}
-        ctaLabel="Sign up"
-        ctaHref="#waitlist"
+        links={route === 'home' ? navLinks : []}
+        ctaLabel={
+          currentUser
+            ? 'Signed in'
+            : route === 'home'
+              ? 'Sign up'
+              : 'Back home'
+        }
+        onCtaClick={(event) => {
+          event.preventDefault()
+          if (currentUser) return
+          if (route === 'home') {
+            navigateTo('/signup')
+            return
+          }
+          navigateTo('/')
+        }}
       />
 
-      <main>
+      {route === 'home' ? (
+        <main>
         <Section
           id="hero"
           titleNode={
@@ -176,7 +232,17 @@ function App() {
           <p>GenOS</p>
           <a href="#hero">Back to top</a>
         </footer>
-      </main>
+        </main>
+      ) : (
+        <AuthPage
+          mode={authMode}
+          onModeChange={(mode) => navigateTo(mode === 'signin' ? '/signin' : '/signup')}
+          onAuthSuccess={(user) => {
+            setCurrentUser(user)
+            navigateTo('/')
+          }}
+        />
+      )}
     </div>
   )
 }
