@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { API_BASE_URL, getMe, login, signup } from '../../lib/authApi'
+import { useState } from 'react'
+import { getMe, login, signup } from '../../lib/authApi'
 
 function isValidEmail(value) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
@@ -20,12 +20,6 @@ function AuthPage({ mode, onModeChange, onAuthSuccess }) {
     email: '',
     password: '',
   })
-
-  const corsHint = useMemo(
-    () =>
-      'If requests fail in browser, confirm backend ALLOWED_ORIGINS includes your frontend origin.',
-    [],
-  )
 
   const setField = (type, key, value) => {
     if (type === 'signup') {
@@ -123,8 +117,6 @@ function AuthPage({ mode, onModeChange, onAuthSuccess }) {
     <main className="auth-page-main">
       <section className="auth-page-card">
         <h1>{mode === 'signup' ? 'Create your GenOS account' : 'Sign in to GenOS'}</h1>
-        <p className="auth-subtext">API base: {API_BASE_URL}</p>
-        <p className="auth-subtext">{corsHint}</p>
 
         <div className="auth-switch">
           <button
