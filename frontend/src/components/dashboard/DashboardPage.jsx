@@ -9,7 +9,7 @@ import {
 } from '../../lib/serverApi'
 import ServerMetricsBadge from './ServerMetricsBadge'
 
-function DashboardPage({ onAddConnection, onOpenChat }) {
+function DashboardPage({ onAddConnection, onOpenServer }) {
   const [actionsOpenFor, setActionsOpenFor] = useState(null)
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(false)
@@ -207,9 +207,9 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     type="button"
                     className="recent-commands-btn"
                     disabled={!connection.server_id}
-                    onClick={() => onOpenChat(connection.server_id)}
+                    onClick={() => onOpenServer && onOpenServer(connection.server_id)}
                   >
-                    Open chat
+                    Open server
                   </button>
                 </div>
               </BorderGlow>
@@ -294,9 +294,9 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     type="button"
                     className="recent-commands-btn"
                     disabled={!connection.server_id}
-                    onClick={() => onOpenChat(connection.server_id)}
+                    onClick={() => onOpenServer && onOpenServer(connection.server_id)}
                   >
-                    Open chat
+                    Open server
                   </button>
                 </div>
               </BorderGlow>

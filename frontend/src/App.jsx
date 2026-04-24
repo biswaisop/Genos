@@ -12,6 +12,7 @@ import ChatPage from './components/chat/ChatPage'
 import NotificationBell from './components/notifications/NotificationBell'
 import TeamsPage from './components/teams/TeamsPage'
 import TeamDetailPage from './components/teams/TeamDetailPage'
+import ServerDashboardPage from './components/server/ServerDashboardPage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
@@ -23,6 +24,7 @@ function getRouteFromPath(pathname) {
   if (pathname === '/chat') return 'chat'
   if (pathname === '/teams') return 'teams'
   if (pathname.startsWith('/teams/')) return 'team-detail'
+  if (pathname.startsWith('/server/')) return 'server'
   return 'home'
 }
 
@@ -33,9 +35,22 @@ function getTeamIdFromPath(pathname) {
   return trimmed || null
 }
 
+function getServerIdFromPath(pathname) {
+  if (!pathname.startsWith('/server/')) return null
+  const slug = pathname.slice('/server/'.length)
+  const trimmed = slug.replace(/\/+$/, '')
+  if (!trimmed) return null
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
+}
+
 function App() {
   const [route, setRoute] = useState(getRouteFromPath(window.location.pathname))
   const [teamId, setTeamId] = useState(getTeamIdFromPath(window.location.pathname))
+  const [serverId, setServerId] = useState(getServerIdFromPath(window.location.pathname))
   const [currentUser, setCurrentUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
 
@@ -114,7 +129,7 @@ function App() {
 
   useEffect(() => {
     if (!authReady) return
-    const authGated = ['dashboard', 'teams', 'team-detail']
+    const authGated = ['dashboard', 'teams', 'team-detail', 'server']
     if (!authGated.includes(route)) return
     if (currentUser) return
     navigateTo('/signin')
@@ -125,6 +140,7 @@ function App() {
       const pathname = window.location.pathname
       setRoute(getRouteFromPath(pathname))
       setTeamId(getTeamIdFromPath(pathname))
+      setServerId(getServerIdFromPath(pathname))
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -139,6 +155,7 @@ function App() {
     const pathname = new URL(path, window.location.origin).pathname
     setRoute(getRouteFromPath(pathname))
     setTeamId(getTeamIdFromPath(pathname))
+    setServerId(getServerIdFromPath(pathname))
   }
 
   const authMode = route === 'signin' ? 'signin' : route === 'signup' ? 'signup' : null
@@ -174,6 +191,8 @@ function App() {
             ? ''
             : route === 'chat'
             ? ''
+            : route === 'server'
+            ? 'Dashboard'
             : route === 'teams' || route === 'team-detail'
             ? 'Dashboard'
             : currentUser
@@ -190,6 +209,10 @@ function App() {
           }
           if (route === 'create-connection') return
           if (route === 'chat') return
+          if (route === 'server') {
+            navigateTo('/dashboard')
+            return
+          }
           if (route === 'teams' || route === 'team-detail') {
             navigateTo('/dashboard')
             return
@@ -310,7 +333,7 @@ function App() {
       ) : route === 'dashboard' && currentUser ? (
         <DashboardPage
           onAddConnection={() => navigateTo('/create-connection')}
-          onOpenChat={(serverId) => navigateTo(`/chat?serverId=${encodeURIComponent(serverId)}`)}
+          onOpenServer={(id) => navigateTo(`/server/${encodeURIComponent(id)}`)}
         />
       ) : route === 'teams' && currentUser ? (
         <TeamsPage
@@ -322,6 +345,14 @@ function App() {
           teamId={teamId}
           currentUser={currentUser}
           onBack={() => navigateTo('/teams')}
+        />
+      ) : route === 'server' && currentUser && serverId ? (
+        <ServerDashboardPage
+          serverId={serverId}
+          onOpenChat={(id) =>
+            navigateTo(`/chat?serverId=${encodeURIComponent(id)}`)
+          }
+          onBack={() => navigateTo('/dashboard')}
         />
       ) : route === 'create-connection' ? (
         <CreateConnectionPage />

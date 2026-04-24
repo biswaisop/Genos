@@ -331,3 +331,23 @@ async def fetch_latest_metric(server_id: str) -> Optional[dict]:
         return None
     doc["_id"] = str(doc["_id"])
     return doc
+
+
+async def fetch_metrics_recent(server_id: str, limit: int = 20) -> list[dict]:
+    """Return the last `limit` metric snapshots, sorted oldest -> newest.
+
+    Used by the per-server dashboard charts which want a small sliding window
+    suitable for direct plotting on the X axis.
+    """
+    cursor = (
+        server_metrics_collection
+        .find({"server_id": server_id})
+        .sort("polled_at", -1)
+        .limit(limit)
+    )
+    docs: list[dict] = []
+    async for doc in cursor:
+        doc["_id"] = str(doc["_id"])
+        docs.append(doc)
+    docs.reverse()
+    return docs

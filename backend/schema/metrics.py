@@ -30,3 +30,11 @@ class ServerMetricsResponse(BaseModel):
     load_average: Optional[str] = None
     success: bool = True
     error: Optional[str] = None
+
+
+class ServerStatusResponse(BaseModel):
+    """Lightweight status payload for the per-server dashboard header."""
+    server_id: str
+    status: str
+    last_seen: Optional[datetime] = None
+    host: Optional[str] = None

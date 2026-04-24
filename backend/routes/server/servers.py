@@ -6,7 +6,7 @@ import tempfile
 from urllib.parse import unquote
 from datetime import datetime, timezone
 from schema.servers import ServerCreateRequest, ServerResponse, ServerTestResponse
-from schema.metrics import ServerMetricsResponse
+from schema.metrics import ServerMetricsResponse, ServerStatusResponse
 from schema.user import UserInDB
 from core.serverutils import (
     createserver,
@@ -18,7 +18,11 @@ from core.db import servers_collection
 from core.auth import get_current_user
 from core.access import has_server_access, resolve_user_role
 from services.vault import store_ssh_key, get_ssh_key
-from services.poller import fetch_latest_metric, fetch_metrics_history
+from services.poller import (
+    fetch_latest_metric,
+    fetch_metrics_history,
+    fetch_metrics_recent,
+)
 from core.sshconnector import run_command_ssh
 from core.session_manager import get_connector, disconnect_user
 
@@ -325,10 +329,21 @@ async def get_server_metrics(
 )
 async def get_server_metrics_history(
     server_id: str,
-    hours: int = 24,
+    hours: int | None = None,
+    limit: int | None = None,
     current_user: UserInDB = Depends(get_current_user),
 ):
-    """Return up to the last `hours` hours of metric snapshots (newest first)."""
+    """Return metric snapshots for this server.
+
+    Two modes (mutually optional):
+
+    * ``?limit=N``  → newest-first window of N most recent docs, returned in
+      oldest → newest order so charts can plot directly. N is clamped to
+      ``[1, 100]``.
+    * ``?hours=H``  → docs polled within the last H hours, newest first. H is
+      clamped to ``[1, 72]``. This is the legacy/default behaviour and is kept
+      as the fallback when ``limit`` is not provided.
+    """
     normalized_server_id = normalize_server_id(server_id)
     server = await getserverbyid(normalized_server_id)
     if not server:
@@ -336,7 +351,16 @@ async def get_server_metrics_history(
     if not await has_server_access(current_user.id, server):
         raise HTTPException(status_code=403, detail="Not authorized to access this server")
 
-    docs = await fetch_metrics_history(normalized_server_id, hours=max(1, min(hours, 72)))
+    if limit is not None:
+        docs = await fetch_metrics_recent(
+            normalized_server_id,
+            limit=max(1, min(limit, 100)),
+        )
+    else:
+        docs = await fetch_metrics_history(
+            normalized_server_id,
+            hours=max(1, min(hours or 24, 72)),
+        )
     return [
         ServerMetricsResponse(
             server_id=doc.get("server_id"),
@@ -350,3 +374,38 @@ async def get_server_metrics_history(
         )
         for doc in docs
     ]
+
+
+@ServerRouter.get(
+    "/{server_id}/metrics/status",
+    response_model=ServerStatusResponse,
+)
+async def get_server_status(
+    server_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """Return lightweight status info for the per-server dashboard header.
+
+    `last_seen` is the most recent successful metrics poll if available,
+    falling back to `connection.last_connected_at`.
+    """
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not await has_server_access(current_user.id, server):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    last_seen = None
+    latest = await fetch_latest_metric(normalized_server_id)
+    if latest:
+        last_seen = latest.get("polled_at")
+    if last_seen is None and server.connection:
+        last_seen = server.connection.last_connected_at
+
+    return ServerStatusResponse(
+        server_id=normalized_server_id,
+        status=server.connection.status if server.connection else "disconnected",
+        last_seen=last_seen,
+        host=server.connection.host if server.connection else None,
+    )
