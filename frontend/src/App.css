@@ -148,11 +148,21 @@ main {
   margin-top: 0;
 }
 
-.hero-actions {
-  margin-top: 24px;
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
+.hero-gradient-title {
+  margin: 24px 0;
+  font-size: clamp(2rem, 5vw, 3rem);
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+}
+
+.hero-section {
+  text-align: center;
+  padding: 88px 0 120px;
+}
+
+.hero-section .section__description {
+  margin: 12px auto 0;
+  max-width: 56ch;
 }
 
 .split-grid,
@@ -179,10 +189,7 @@ main {
 .info-card,
 .step-card,
 .faq-item {
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 16px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  width: 100%;
 }
 
 .info-card p,

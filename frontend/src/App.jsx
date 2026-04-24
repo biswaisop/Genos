@@ -1,8 +1,10 @@
 import Navbar from './components/layout/Navbar'
 import CtaButton from './components/common/CtaButton'
+import StarBorder from './components/common/StarBorder'
 import Section from './components/layout/Section'
 import Beams from './components/backgrounds/Beams'
 import CursorGlow from './components/backgrounds/CursorGlow'
+import GradientText from './components/text/GradientText'
 import './App.css'
 
 function App() {
@@ -115,41 +117,20 @@ function App() {
       <main>
         <Section
           id="hero"
-          eyebrow="Hackathon Project"
-          title="Run complex workflows with coordinated AI agents"
-          description="GenOS orchestrates specialist agents, tools, and data pipelines so teams can route, execute, and review tasks faster with human oversight."
+          titleNode={
+            <h1 className="hero-gradient-title">
+              <GradientText
+                colors={['#5b1a9b', '#aa3bff', '#f8d4ff']}
+                animationSpeed={3.5}
+                direction="horizontal"
+              >
+                Ops Without Commands
+              </GradientText>
+            </h1>
+          }
+          description="GenOS turns natural language into real system actions. From files and processes to networks and servers, intelligent agents handle execution so you don’t have to."
           className="hero-section"
-        >
-          <div className="hero-actions">
-            <CtaButton label="Sign up" href="#waitlist" />
-            <CtaButton label="See workflow" href="#how-it-works" variant="secondary" />
-          </div>
-        </Section>
-
-        <Section
-          id="problem-solution"
-          title="From fragmented automation to one coordinated system"
-          className="problem-solution-section"
-        >
-          <div className="split-grid">
-            <article className="info-card">
-              <h3>Current pain</h3>
-              <ul>
-                <li>Disconnected tools create manual handoffs between teams and systems.</li>
-                <li>Brittle scripts fail on edge cases and become hard to maintain quickly.</li>
-                <li>Limited traceability makes it difficult to review what happened and why.</li>
-              </ul>
-            </article>
-            <article className="info-card">
-              <h3>GenOS approach</h3>
-              <ul>
-                <li>Agent registry routes each task to the right specialist at runtime.</li>
-                <li>Shared tool layer executes actions across code, shell, and network contexts.</li>
-                <li>Execution traces and storage layers preserve outcomes for visibility and reuse.</li>
-              </ul>
-            </article>
-          </div>
-        </Section>
+        />
 
         <Section
           id="how-it-works"
@@ -161,18 +142,18 @@ function App() {
             <p>Workflow architecture preview</p>
           </div>
           <div className="step-grid">
-            <article className="step-card">
+            <StarBorder as="article" className="step-card">
               <h3>1. Ingest request</h3>
               <p>Accept user or API input with context, priorities, and guardrails.</p>
-            </article>
-            <article className="step-card">
+            </StarBorder>
+            <StarBorder as="article" className="step-card">
               <h3>2. Orchestrate agents</h3>
               <p>Route tasks through the agent registry and trigger required tools per step.</p>
-            </article>
-            <article className="step-card">
+            </StarBorder>
+            <StarBorder as="article" className="step-card">
               <h3>3. Deliver output</h3>
               <p>Store results, emit traces, and return actionable outputs for review.</p>
-            </article>
+            </StarBorder>
           </div>
         </Section>
 
@@ -183,10 +164,10 @@ function App() {
         >
           <div className="card-grid">
             {capabilities.map((capability) => (
-              <article key={capability.title} className="info-card">
+              <StarBorder key={capability.title} as="article" className="info-card">
                 <h3>{capability.title}</h3>
                 <p>{capability.description}</p>
-              </article>
+              </StarBorder>
             ))}
           </div>
         </Section>
@@ -198,10 +179,10 @@ function App() {
         >
           <div className="card-grid card-grid--three">
             {useCases.map((useCase) => (
-              <article key={useCase.title} className="info-card">
+              <StarBorder key={useCase.title} as="article" className="info-card">
                 <h3>{useCase.title}</h3>
                 <p>{useCase.description}</p>
-              </article>
+              </StarBorder>
             ))}
           </div>
         </Section>
@@ -226,10 +207,10 @@ function App() {
         >
           <div className="faq-list">
             {faqs.map((faq) => (
-              <details key={faq.question} className="faq-item">
+              <StarBorder key={faq.question} as="details" className="faq-item">
                 <summary>{faq.question}</summary>
                 <p>{faq.answer}</p>
-              </details>
+              </StarBorder>
             ))}
           </div>
         </Section>
