@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { createServer } from '../../lib/serverApi'
 
 import elasticIpImg from '../../../demo-images/elastic-ip-img.png'
 
@@ -26,15 +27,47 @@ function CreateConnectionPage() {
   const [username, setUsername] = useState('')
   const [showElasticIpImage, setShowElasticIpImage] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [publicKey, setPublicKey] = useState('')
+  const [creatingConnection, setCreatingConnection] = useState(false)
+  const [connectionError, setConnectionError] = useState('')
   const hasValidElasticIp = useMemo(() => isValidPublicIpv4(elasticIp), [elasticIp])
   const isStepOneComplete = useMemo(
     () => elasticIp.trim().length > 0 && username.trim().length > 0,
     [elasticIp, username],
   )
-  const publicKey =
-    'ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIOQfGqkJ6vUj1M2c8Y4nQ2Pp4t6L8s1d3h5j7k9m1n2g genos@sentinel'
+
+  async function handleCreateConnectionAndProceed() {
+    const token = localStorage.getItem('genos_access_token')
+    if (!token) {
+      setConnectionError('Please sign in first to create a connection.')
+      return
+    }
+    try {
+      setCreatingConnection(true)
+      setConnectionError('')
+      setCopied(false)
+      const host = elasticIp.trim()
+      const user = username.trim()
+      const response = await createServer(token, {
+        name: `${user}@${host}`,
+        host,
+        username: user,
+        port: 22,
+      })
+      if (!response?.public_key) {
+        throw new Error('No public SSH key returned by server.')
+      }
+      setPublicKey(response.public_key)
+      setCurrentStep(2)
+    } catch (error) {
+      setConnectionError(error.message || 'Could not generate SSH key for this connection.')
+    } finally {
+      setCreatingConnection(false)
+    }
+  }
 
   async function handleCopyKey() {
+    if (!publicKey) return
     try {
       await navigator.clipboard.writeText(publicKey)
       setCopied(true)
@@ -128,12 +161,15 @@ function CreateConnectionPage() {
               <button
                 type="button"
                 className="create-connection-next"
-                disabled={!isStepOneComplete}
-                onClick={() => setCurrentStep(2)}
+                disabled={!isStepOneComplete || creatingConnection}
+                onClick={handleCreateConnectionAndProceed}
               >
-                Next
+                {creatingConnection ? 'Generating key...' : 'Next'}
               </button>
             </div>
+            {connectionError ? (
+              <p className="create-connection-validation invalid">{connectionError}</p>
+            ) : null}
           </>
         ) : currentStep === 2 ? (
           <>
@@ -163,6 +199,7 @@ function CreateConnectionPage() {
                 type="button"
                 className="create-connection-next create-connection-key-copy"
                 onClick={handleCopyKey}
+                disabled={!publicKey}
               >
                 {copied ? 'Copied' : 'Copy Key'}
               </button>
@@ -174,6 +211,7 @@ function CreateConnectionPage() {
               <button
                 type="button"
                 className="create-connection-next"
+                disabled={!publicKey}
                 onClick={() => setCurrentStep(3)}
               >
                 Next
