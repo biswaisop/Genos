@@ -4,16 +4,4 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = [
-    "fastapi>=0.136.1",
-    "langchain>=1.2.15",
-    "langgraph>=1.1.9",
-    "motor>=3.7.1",
-    "paramiko>=4.0.0",
-    "passlib[bcrypt]>=1.7.4",
-    "pydantic[email]>=2.13.3",
-    "python-dotenv>=1.2.2",
-    "python-jose[cryptography]>=3.5.0",
-    "python-multipart>=0.0.26",
-    "uvicorn>=0.46.0",
-]
+dependencies = []
