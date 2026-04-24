@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { createServer } from '../../lib/serverApi'
+import { createServer, testServer } from '../../lib/serverApi'
 
 import elasticIpImg from '../../../demo-images/elastic-ip-img.png'
 
@@ -28,7 +28,9 @@ function CreateConnectionPage() {
   const [showElasticIpImage, setShowElasticIpImage] = useState(false)
   const [copied, setCopied] = useState(false)
   const [publicKey, setPublicKey] = useState('')
+  const [serverId, setServerId] = useState('')
   const [creatingConnection, setCreatingConnection] = useState(false)
+  const [verifyingConnection, setVerifyingConnection] = useState(false)
   const [connectionError, setConnectionError] = useState('')
   const hasValidElasticIp = useMemo(() => isValidPublicIpv4(elasticIp), [elasticIp])
   const isStepOneComplete = useMemo(
@@ -58,6 +60,7 @@ function CreateConnectionPage() {
         throw new Error('No public SSH key returned by server.')
       }
       setPublicKey(response.public_key)
+      setServerId(response.server_id || '')
       setCurrentStep(2)
     } catch (error) {
       setConnectionError(error.message || 'Could not generate SSH key for this connection.')
@@ -74,6 +77,33 @@ function CreateConnectionPage() {
       window.setTimeout(() => setCopied(false), 1500)
     } catch {
       setCopied(false)
+    }
+  }
+
+  async function handleVerifyAndRedirect() {
+    const token = localStorage.getItem('genos_access_token')
+    if (!token) {
+      setConnectionError('Please sign in first to verify connection.')
+      return
+    }
+    if (!serverId) {
+      setConnectionError('Connection ID missing. Please re-create this connection.')
+      return
+    }
+    try {
+      setVerifyingConnection(true)
+      setConnectionError('')
+      const result = await testServer(token, serverId)
+      if (result?.success === true) {
+        window.history.pushState({}, '', `/chat?serverId=${encodeURIComponent(serverId)}`)
+        window.dispatchEvent(new PopStateEvent('popstate'))
+        return
+      }
+      setConnectionError(result?.message || 'Connection test failed.')
+    } catch (error) {
+      setConnectionError(error.message || 'Could not verify server connection.')
+    } finally {
+      setVerifyingConnection(false)
     }
   }
 
@@ -230,11 +260,15 @@ function CreateConnectionPage() {
               <button
                 type="button"
                 className="create-connection-next"
-                onClick={() => setCurrentStep(4)}
+                disabled={!serverId || verifyingConnection}
+                onClick={handleVerifyAndRedirect}
               >
-                Done
+                {verifyingConnection ? 'Verifying...' : 'Done'}
               </button>
             </div>
+            {connectionError ? (
+              <p className="create-connection-validation invalid">{connectionError}</p>
+            ) : null}
           </>
         ) : (
           <>
