@@ -24,6 +24,7 @@ const mockConnections = [
 
 function DashboardPage() {
   const [expandedCard, setExpandedCard] = useState(null)
+  const [actionsOpenFor, setActionsOpenFor] = useState(null)
   const onlineConnections = mockConnections.filter(
     (connection) => connection.status === 'Online',
   )
@@ -73,15 +74,41 @@ function DashboardPage() {
               >
                 <div className="dashboard-connection-top">
                   <h3>{connection.name}</h3>
-                  <span className="connection-status ok">{connection.status}</span>
+                  <div className="connection-top-right">
+                    <span className="connection-status ok">{connection.status}</span>
+                    <div className="connection-actions-menu">
+                      <button
+                        type="button"
+                        className="connection-menu-btn"
+                        aria-label="Connection options"
+                        onClick={() =>
+                          setActionsOpenFor((prev) =>
+                            prev === connection.name ? null : connection.name,
+                          )
+                        }
+                      >
+                        ...
+                      </button>
+                      {actionsOpenFor === connection.name ? (
+                        <div className="connection-menu-dropdown">
+                          <button type="button">Remove connection</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <ul className="connection-details">
                   <li>Type: VPS</li>
                 </ul>
                 <div className="connection-meta-row">
-                  <p className="connection-active-since">
-                    Active since: {connection.lastSeen}
-                  </p>
+                  <div className="connection-meta-left">
+                    <p className="connection-active-since">
+                      Active since: {connection.lastSeen}
+                    </p>
+                    <button type="button" className="connection-action-btn disconnect">
+                      Disconnect
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
@@ -122,15 +149,41 @@ function DashboardPage() {
               >
                 <div className="dashboard-connection-top">
                   <h3>{connection.name}</h3>
-                  <span className="connection-status warn">{connection.status}</span>
+                  <div className="connection-top-right">
+                    <span className="connection-status warn">{connection.status}</span>
+                    <div className="connection-actions-menu">
+                      <button
+                        type="button"
+                        className="connection-menu-btn"
+                        aria-label="Connection options"
+                        onClick={() =>
+                          setActionsOpenFor((prev) =>
+                            prev === connection.name ? null : connection.name,
+                          )
+                        }
+                      >
+                        ...
+                      </button>
+                      {actionsOpenFor === connection.name ? (
+                        <div className="connection-menu-dropdown">
+                          <button type="button">Remove connection</button>
+                        </div>
+                      ) : null}
+                    </div>
+                  </div>
                 </div>
                 <ul className="connection-details">
                   <li>Type: VPS</li>
                 </ul>
                 <div className="connection-meta-row">
-                  <p className="connection-active-since">
-                    Disconnected: {connection.lastSeen}
-                  </p>
+                  <div className="connection-meta-left">
+                    <p className="connection-active-since">
+                      Disconnected: {connection.lastSeen}
+                    </p>
+                    <button type="button" className="connection-action-btn reconnect">
+                      Reconnect
+                    </button>
+                  </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
