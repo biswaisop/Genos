@@ -1,10 +1,17 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from typing import List
-from schema.servers import ServerCreateRequest, ServerResponse
+import os
+import time
+import tempfile
+from datetime import datetime, timezone
+from schema.servers import ServerCreateRequest, ServerResponse, ServerTestResponse
 from schema.user import UserInDB
 from core.serverutils import createserver, getserversbyuser, getserverbyid, deleteserverbyid
+from core.db import servers_collection
 from core.auth import get_current_user
-from services.vault import store_ssh_key
+from services.vault import store_ssh_key, get_ssh_key
+from core.sshconnector import run_command_ssh
+from core.session_manager import get_connector, disconnect_user
 
 ServerRouter = APIRouter()
 
@@ -87,6 +94,178 @@ async def delete_server(server_id: str, current_user: UserInDB = Depends(get_cur
         
     if str(server.owner_id) != str(current_user.id):
         raise HTTPException(status_code=403, detail="Not authorized to delete this server")
+
+    disconnect_user(
+        hostname=server.connection.host,
+        username=server.connection.username,
+        port=server.connection.port,
+    )
         
     success = await deleteserverbyid(server_id)
     return {"deleted": success, "server_id": server_id}
+
+
+@ServerRouter.post("/{server_id}/connect", status_code=status.HTTP_200_OK)
+async def connect_server(server_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Create/reuse a persistent SSH session for this server."""
+    server = await getserverbyid(server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if str(server.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    host = server.connection.host
+    port = server.connection.port
+    username = server.connection.username
+
+    try:
+        vault_data = get_ssh_key(hostname=host, username=username)
+        private_key_pem = vault_data["private_key"]
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Could not retrieve key from Vault: {exc}")
+
+    try:
+        connector = get_connector(
+            hostname=host,
+            username=username,
+            port=port,
+            key_material=private_key_pem,
+        )
+        probe = connector.exec("whoami && pwd", timeout=20)
+    except Exception as exc:
+        await servers_collection.update_one(
+            {"server_id": server_id},
+            {"$set": {"connection.status": "error"}},
+        )
+        raise HTTPException(status_code=500, detail=f"Connection failed: {exc}")
+
+    await servers_collection.update_one(
+        {"server_id": server_id},
+        {
+            "$set": {
+                "connection.status": "connected",
+                "connection.last_connected_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+
+    return {
+        "server_id": server_id,
+        "connected": True,
+        "message": "Persistent SSH session established",
+        "probe": probe,
+    }
+
+
+@ServerRouter.post("/{server_id}/disconnect", status_code=status.HTTP_200_OK)
+async def disconnect_server(server_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """Close persistent SSH session for this server."""
+    server = await getserverbyid(server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if str(server.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    disconnect_user(
+        hostname=server.connection.host,
+        username=server.connection.username,
+        port=server.connection.port,
+    )
+
+    await servers_collection.update_one(
+        {"server_id": server_id},
+        {"$set": {"connection.status": "disconnected"}},
+    )
+
+    return {
+        "server_id": server_id,
+        "connected": False,
+        "message": "Persistent SSH session disconnected",
+    }
+
+
+@ServerRouter.get("/{server_id}/test", response_model=ServerTestResponse)
+async def test_server_connection(server_id: str, current_user: UserInDB = Depends(get_current_user)):
+    """
+    Test the SSH connection to a configured server.
+
+    Call this endpoint after adding the public key GenOS gave you to your
+    server's ~/.ssh/authorized_keys file.
+
+    Steps performed:
+    1. Look up the server record to get host / port / username.
+    2. Fetch the private key from HashiCorp Vault.
+    3. Write the private key to a secure temporary file.
+    4. Attempt an SSH connection and run `whoami` + `pwd`.
+    5. Clean up the temporary key file regardless of outcome.
+    6. Return the result with latency, remote user, and working directory.
+    """
+    # 1. Verify server exists and belongs to the current user
+    server = await getserverbyid(server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if str(server.owner_id) != str(current_user.id):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    host = server.connection.host
+    port = server.connection.port
+    username = server.connection.username
+
+    # 2. Fetch the private key from Vault
+    try:
+        vault_data = get_ssh_key(hostname=host, username=username)
+        private_key_pem = vault_data["private_key"]
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not retrieve key from Vault: {exc}"
+        )
+
+    # 3. Write private key to a temporary file with restrictive permissions
+    key_file = None
+    try:
+        fd, key_path = tempfile.mkstemp(prefix=f"{host}_{username}_", suffix=".pem")
+        try:
+            os.write(fd, private_key_pem.encode())
+        finally:
+            os.close(fd)
+        # Restrict file permissions (no-op on Windows, critical on Linux)
+        os.chmod(key_path, 0o600)
+
+        # 4. Attempt SSH connection
+        start_ts = time.monotonic()
+        whoami_result = run_command_ssh(
+            host=host,
+            port=port,
+            username=username,
+            key_path=key_path,
+            command="whoami && pwd",
+        )
+        latency_ms = round((time.monotonic() - start_ts) * 1000, 2)
+
+    finally:
+        # 5. Always clean up the temp key file
+        if key_path and os.path.exists(key_path):
+            os.remove(key_path)
+
+    # 6. Build response
+    if whoami_result["exit_code"] == 0 and not whoami_result.get("error"):
+        output_lines = whoami_result["stdout"].strip().splitlines()
+        whoami = output_lines[0].strip() if len(output_lines) > 0 else None
+        cwd    = output_lines[1].strip() if len(output_lines) > 1 else None
+        return ServerTestResponse(
+            server_id=server_id,
+            success=True,
+            message="SSH connection successful.",
+            whoami=whoami,
+            cwd=cwd,
+            latency_ms=latency_ms,
+        )
+    else:
+        error_detail = whoami_result.get("error") or whoami_result.get("stderr") or "Unknown error"
+        return ServerTestResponse(
+            server_id=server_id,
+            success=False,
+            message=f"SSH connection failed: {error_detail}",
+            latency_ms=latency_ms,
+        )
