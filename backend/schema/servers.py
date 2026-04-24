@@ -157,6 +157,9 @@ class ServerResponse(BaseModel):
     os: Optional[str] = None
     last_connected_at: Optional[datetime] = None
     created_at: datetime
+    # Populated only on POST /api/v1/servers — the user must add this to their server's
+    # ~/.ssh/authorized_keys before GenOS can connect via SSH.
+    public_key: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 
