@@ -1,5 +1,14 @@
 import { API_BASE_URL } from './authApi'
 
+function normalizeServerId(serverId) {
+  if (!serverId) return ''
+  try {
+    return decodeURIComponent(serverId)
+  } catch {
+    return serverId
+  }
+}
+
 async function request(path, token, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     headers: {
@@ -39,17 +48,21 @@ export function createServer(token, payload) {
 }
 
 export function testServer(token, serverId) {
-  return request(`/api/v1/servers/${serverId}/test`, token)
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${normalizedServerId}/test`, token)
 }
 
 export function connectServer(token, serverId) {
-  return request(`/api/v1/servers/${serverId}/connect`, token, { method: 'POST' })
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${normalizedServerId}/connect`, token, { method: 'POST' })
 }
 
 export function disconnectServer(token, serverId) {
-  return request(`/api/v1/servers/${serverId}/disconnect`, token, { method: 'POST' })
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${normalizedServerId}/disconnect`, token, { method: 'POST' })
 }
 
 export function deleteServer(token, serverId) {
-  return request(`/api/v1/servers/${serverId}`, token, { method: 'DELETE' })
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${normalizedServerId}`, token, { method: 'DELETE' })
 }

@@ -10,6 +10,8 @@ async def createserver(owner_id: str, req: ServerCreateRequest) -> str:
     server_id = f"{req.host}@{req.username}"
     
     connection_details = ConnectionDetails(
+        name=req.name,
+        server_id=server_id,
         host=req.host,
         port=req.port,
         username=req.username,
@@ -18,6 +20,7 @@ async def createserver(owner_id: str, req: ServerCreateRequest) -> str:
     )
 
     server = ServerInDB(
+        server_id=server_id,
         owner_id=owner_id,
         name=req.name,
         description=req.description,

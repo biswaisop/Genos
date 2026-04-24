@@ -28,8 +28,15 @@ app = FastAPI(
 )
 
 # Configure CORS dynamically based on ENV or default local
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000,http://localhost:8000").split(",")
-
+allowed_origins = [
+    origin.strip()
+    for origin in os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://localhost:5173,http://localhost:8000,https://doorman-stencil-dime.ngrok-free.dev",
+    ).split(",")
+    if origin.strip()
+]
+print("CORS origins:", allowed_origins)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=allowed_origins,

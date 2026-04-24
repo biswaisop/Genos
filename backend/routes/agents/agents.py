@@ -7,6 +7,7 @@ from langgraph.types import Command
 from langchain_core.messages import HumanMessage, AIMessage
 import json
 import logging
+from urllib.parse import unquote
 from jose import JWTError, jwt
 
 from graph import build_graph, State
@@ -29,6 +30,10 @@ compiled_graphs = {}
 
 def _thread_id(hostname: str, username: str) -> str:
     return f"{hostname}@{username}"
+
+
+def _normalize_server_id(server_id: str) -> str:
+    return unquote(server_id) if server_id else server_id
 
 
 def get_agent_graph(hostname: str, username: str, *, port: int, key_material: str):
@@ -76,11 +81,13 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
     """
     await websocket.accept()
 
+    normalized_server_id = _normalize_server_id(server_id)
+
     current_user = await _authenticate_websocket(websocket)
     if not current_user:
         return
 
-    server = await getserverbyid(server_id)
+    server = await getserverbyid(normalized_server_id)
     if not server:
         await websocket.send_json({"type": "error", "content": "Server not found."})
         await websocket.close(code=4404, reason="Server not found")
@@ -140,7 +147,7 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                         await memory.log_command(
                             command_id=command_id,
                             user_id=str(current_user.id),
-                            server_id=server_id,
+                            server_id=normalized_server_id,
                             session_id=thread_id,
                             raw_message=f"[resume]={decision}",
                             status="completed",
@@ -161,14 +168,14 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                     await websocket.send_json({"type": "error", "content": "Received empty message."})
                     continue
 
-                await memory.touch_session(thread_id, str(current_user.id), server_id)
+                await memory.touch_session(thread_id, str(current_user.id), normalized_server_id)
                 await memory.append_short_message(thread_id, "user", message)
 
                 command_id = str(uuid.uuid4())
                 await memory.log_command(
                     command_id=command_id,
                     user_id=str(current_user.id),
-                    server_id=server_id,
+                    server_id=normalized_server_id,
                     session_id=thread_id,
                     raw_message=message,
                     status="running",
@@ -208,7 +215,7 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                     await memory.log_command(
                         command_id=command_id,
                         user_id=str(current_user.id),
-                        server_id=server_id,
+                        server_id=normalized_server_id,
                         session_id=thread_id,
                         raw_message=message,
                         status="failed",
@@ -255,7 +262,7 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                         await memory.log_command(
                             command_id=str(uuid.uuid4()),
                             user_id=str(current_user.id),
-                            server_id=server_id,
+                            server_id=normalized_server_id,
                             session_id=thread_id,
                             raw_message=latest_user,
                             status=status_value,

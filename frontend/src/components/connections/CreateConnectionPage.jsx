@@ -3,6 +3,15 @@ import { createServer, testServer } from '../../lib/serverApi'
 
 import elasticIpImg from '../../../demo-images/elastic-ip-img.png'
 
+function normalizeServerId(serverId) {
+  if (!serverId) return ''
+  try {
+    return decodeURIComponent(serverId)
+  } catch {
+    return serverId
+  }
+}
+
 function isValidPublicIpv4(ip) {
   const trimmed = ip.trim()
   const match = trimmed.match(/^(\d{1,3}\.){3}\d{1,3}$/)
@@ -60,7 +69,7 @@ function CreateConnectionPage() {
         throw new Error('No public SSH key returned by server.')
       }
       setPublicKey(response.public_key)
-      setServerId(response.server_id || '')
+      setServerId(normalizeServerId(response.server_id || ''))
       setCurrentStep(2)
     } catch (error) {
       setConnectionError(error.message || 'Could not generate SSH key for this connection.')

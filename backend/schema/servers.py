@@ -11,7 +11,9 @@ class ConnectionDetails(BaseModel):
     """SSH connection details."""
     host: str
     port: int = 22
+    name:str
     username: str
+    server_id: str
     vault_secret_path: Optional[str] = None   # SSH key stored in Vault, never in Mongo
     last_connected_at: Optional[datetime] = None
     status: Literal["connected", "disconnected", "error", "connecting"] = "connecting"
@@ -26,6 +28,7 @@ class ServerMetadata(BaseModel):
 class ServerInDB(BaseModel):
     """Full server document stored in MongoDB."""
     id: Optional[str] = Field(None, alias="_id")
+    server_id: str
     owner_id: str                              # FK → users.user_id
     team_id: Optional[str] = None
 

@@ -3,6 +3,7 @@ from typing import List
 import os
 import time
 import tempfile
+from urllib.parse import unquote
 from datetime import datetime, timezone
 from schema.servers import ServerCreateRequest, ServerResponse, ServerTestResponse
 from schema.user import UserInDB
@@ -14,6 +15,10 @@ from core.sshconnector import run_command_ssh
 from core.session_manager import get_connector, disconnect_user
 
 ServerRouter = APIRouter()
+
+
+def normalize_server_id(server_id: str) -> str:
+    return unquote(server_id) if server_id else server_id
 
 @ServerRouter.get("/", response_model=List[ServerResponse])
 async def list_servers(current_user: UserInDB = Depends(get_current_user)):
@@ -27,7 +32,7 @@ async def list_servers(current_user: UserInDB = Depends(get_current_user)):
         # Build the safe response
         safe_server = ServerResponse(
             _id=s.id,
-            server_id=s.model_dump().get("server_id"),
+            server_id=s.server_id,
             name=s.name,
             host=s.connection.host if s.connection else None,
             status=s.connection.status if s.connection else "disconnected",
@@ -72,7 +77,7 @@ async def create_server(req: ServerCreateRequest, current_user: UserInDB = Depen
 
     return ServerResponse(
         _id=new_server.id,
-        server_id=new_server.model_dump().get("server_id"),
+        server_id=server_id,
         name=new_server.name,
         host=new_server.connection.host,
         status=new_server.connection.status,
@@ -88,7 +93,8 @@ async def delete_server(server_id: str, current_user: UserInDB = Depends(get_cur
     """
     Delete a configured server using its unique ID (host@username).
     """
-    server = await getserverbyid(server_id)
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
         
@@ -101,14 +107,15 @@ async def delete_server(server_id: str, current_user: UserInDB = Depends(get_cur
         port=server.connection.port,
     )
         
-    success = await deleteserverbyid(server_id)
-    return {"deleted": success, "server_id": server_id}
+    success = await deleteserverbyid(normalized_server_id)
+    return {"deleted": success, "server_id": normalized_server_id}
 
 
 @ServerRouter.post("/{server_id}/connect", status_code=status.HTTP_200_OK)
 async def connect_server(server_id: str, current_user: UserInDB = Depends(get_current_user)):
     """Create/reuse a persistent SSH session for this server."""
-    server = await getserverbyid(server_id)
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     if str(server.owner_id) != str(current_user.id):
@@ -134,13 +141,13 @@ async def connect_server(server_id: str, current_user: UserInDB = Depends(get_cu
         probe = connector.exec("whoami && pwd", timeout=20)
     except Exception as exc:
         await servers_collection.update_one(
-            {"server_id": server_id},
+            {"server_id": normalized_server_id},
             {"$set": {"connection.status": "error"}},
         )
         raise HTTPException(status_code=500, detail=f"Connection failed: {exc}")
 
     await servers_collection.update_one(
-        {"server_id": server_id},
+        {"server_id": normalized_server_id},
         {
             "$set": {
                 "connection.status": "connected",
@@ -150,7 +157,7 @@ async def connect_server(server_id: str, current_user: UserInDB = Depends(get_cu
     )
 
     return {
-        "server_id": server_id,
+        "server_id": normalized_server_id,
         "connected": True,
         "message": "Persistent SSH session established",
         "probe": probe,
@@ -160,7 +167,8 @@ async def connect_server(server_id: str, current_user: UserInDB = Depends(get_cu
 @ServerRouter.post("/{server_id}/disconnect", status_code=status.HTTP_200_OK)
 async def disconnect_server(server_id: str, current_user: UserInDB = Depends(get_current_user)):
     """Close persistent SSH session for this server."""
-    server = await getserverbyid(server_id)
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     if str(server.owner_id) != str(current_user.id):
@@ -173,12 +181,12 @@ async def disconnect_server(server_id: str, current_user: UserInDB = Depends(get
     )
 
     await servers_collection.update_one(
-        {"server_id": server_id},
+        {"server_id": normalized_server_id},
         {"$set": {"connection.status": "disconnected"}},
     )
 
     return {
-        "server_id": server_id,
+        "server_id": normalized_server_id,
         "connected": False,
         "message": "Persistent SSH session disconnected",
     }
@@ -201,7 +209,8 @@ async def test_server_connection(server_id: str, current_user: UserInDB = Depend
     6. Return the result with latency, remote user, and working directory.
     """
     # 1. Verify server exists and belongs to the current user
-    server = await getserverbyid(server_id)
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
     if str(server.owner_id) != str(current_user.id):
@@ -254,7 +263,7 @@ async def test_server_connection(server_id: str, current_user: UserInDB = Depend
         whoami = output_lines[0].strip() if len(output_lines) > 0 else None
         cwd    = output_lines[1].strip() if len(output_lines) > 1 else None
         return ServerTestResponse(
-            server_id=server_id,
+            server_id=normalized_server_id,
             success=True,
             message="SSH connection successful.",
             whoami=whoami,
@@ -264,7 +273,7 @@ async def test_server_connection(server_id: str, current_user: UserInDB = Depend
     else:
         error_detail = whoami_result.get("error") or whoami_result.get("stderr") or "Unknown error"
         return ServerTestResponse(
-            server_id=server_id,
+            server_id=normalized_server_id,
             success=False,
             message=f"SSH connection failed: {error_detail}",
             latency_ms=latency_ms,
