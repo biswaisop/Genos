@@ -1,6 +1,5 @@
 import Navbar from './components/layout/Navbar'
-import CtaButton from './components/common/CtaButton'
-import StarBorder from './components/common/StarBorder'
+import BorderGlow from './components/common/BorderGlow'
 import Section from './components/layout/Section'
 import Beams from './components/backgrounds/Beams'
 import CursorGlow from './components/backgrounds/CursorGlow'
@@ -11,7 +10,6 @@ function App() {
   const navLinks = [
     { label: 'How it works', href: '#how-it-works' },
     { label: 'Use cases', href: '#use-cases' },
-    { label: 'FAQ', href: '#faq' },
   ]
 
   const capabilities = [
@@ -62,29 +60,6 @@ function App() {
       title: 'Ops task orchestration',
       description:
         'Run repetitive operational sequences through reusable pipelines instead of brittle scripts.',
-    },
-  ]
-
-  const faqs = [
-    {
-      question: 'Who is GenOS for?',
-      answer:
-        'GenOS is designed for teams managing complex, multi-step workflows that require speed and oversight.',
-    },
-    {
-      question: 'Is a human always in control?',
-      answer:
-        'Yes. Sensitive actions can be gated behind review checkpoints so humans decide when to approve execution.',
-    },
-    {
-      question: 'What tools can agents use?',
-      answer:
-        'Agents can be configured to use shell, code execution, network calls, and custom integrations.',
-    },
-    {
-      question: 'When will beta access open?',
-      answer:
-        'Waitlist users get priority updates and early invitations as private beta slots are released.',
     },
   ]
 
@@ -142,18 +117,18 @@ function App() {
             <p>Workflow architecture preview</p>
           </div>
           <div className="step-grid">
-            <StarBorder as="article" className="step-card">
+            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
               <h3>1. Ingest request</h3>
               <p>Accept user or API input with context, priorities, and guardrails.</p>
-            </StarBorder>
-            <StarBorder as="article" className="step-card">
+            </BorderGlow>
+            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
               <h3>2. Orchestrate agents</h3>
               <p>Route tasks through the agent registry and trigger required tools per step.</p>
-            </StarBorder>
-            <StarBorder as="article" className="step-card">
+            </BorderGlow>
+            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
               <h3>3. Deliver output</h3>
               <p>Store results, emit traces, and return actionable outputs for review.</p>
-            </StarBorder>
+            </BorderGlow>
           </div>
         </Section>
 
@@ -164,10 +139,15 @@ function App() {
         >
           <div className="card-grid">
             {capabilities.map((capability) => (
-              <StarBorder key={capability.title} as="article" className="info-card">
+              <BorderGlow
+                key={capability.title}
+                as="article"
+                className="info-card"
+                glowColor="270 100% 75%"
+              >
                 <h3>{capability.title}</h3>
                 <p>{capability.description}</p>
-              </StarBorder>
+              </BorderGlow>
             ))}
           </div>
         </Section>
@@ -179,38 +159,15 @@ function App() {
         >
           <div className="card-grid card-grid--three">
             {useCases.map((useCase) => (
-              <StarBorder key={useCase.title} as="article" className="info-card">
+              <BorderGlow
+                key={useCase.title}
+                as="article"
+                className="info-card"
+                glowColor="270 100% 75%"
+              >
                 <h3>{useCase.title}</h3>
                 <p>{useCase.description}</p>
-              </StarBorder>
-            ))}
-          </div>
-        </Section>
-
-        <Section
-          id="waitlist"
-          title="Get early access"
-          description="Join the waitlist for private beta updates and first access to live demos."
-          className="waitlist-section"
-        >
-          <form className="waitlist-form">
-            <label htmlFor="email">Email</label>
-            <input id="email" type="email" placeholder="you@company.com" />
-            <CtaButton label="Sign up" type="submit" />
-          </form>
-        </Section>
-
-        <Section
-          id="faq"
-          title="Frequently asked questions"
-          className="faq-section"
-        >
-          <div className="faq-list">
-            {faqs.map((faq) => (
-              <StarBorder key={faq.question} as="details" className="faq-item">
-                <summary>{faq.question}</summary>
-                <p>{faq.answer}</p>
-              </StarBorder>
+              </BorderGlow>
             ))}
           </div>
         </Section>

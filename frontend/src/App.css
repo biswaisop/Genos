@@ -190,6 +190,14 @@ main {
 .step-card,
 .faq-item {
   width: 100%;
+  min-width: 0;
+  height: 100%;
+}
+
+.info-card .border-glow-inner,
+.step-card .border-glow-inner,
+.faq-item .border-glow-inner {
+  padding: 16px;
 }
 
 .info-card p,
