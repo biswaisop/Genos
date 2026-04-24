@@ -164,6 +164,18 @@ class ServerResponse(BaseModel):
     model_config = {"populate_by_name": True}
 
 
+class ServerTestResponse(BaseModel):
+    """Response for GET /api/v1/servers/{server_id}/test."""
+    server_id: str
+    success: bool
+    # Human-readable message — describes what happened (connected / auth failed / etc.)
+    message: str
+    # Output from the test commands run on the remote (whoami + pwd), if successful
+    whoami: Optional[str] = None
+    cwd: Optional[str] = None
+    latency_ms: Optional[float] = None
+
+
 class CommandHistoryItem(BaseModel):
     """Single item returned in GET /api/v1/agent/history."""
     command_id: str

@@ -5,10 +5,12 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "beanie>=2.1.0",
     "cryptography>=46.0.7",
     "fastapi>=0.136.1",
     "hvac>=2.4.0",
     "langchain>=1.2.15",
+    "langchain-groq>=1.1.2",
     "langgraph>=1.1.9",
     "motor>=3.7.1",
     "paramiko>=4.0.0",
@@ -17,5 +19,6 @@ dependencies = [
     "python-dotenv>=1.2.2",
     "python-jose[cryptography]>=3.5.0",
     "python-multipart>=0.0.26",
+    "redis>=6.0.0",
     "uvicorn>=0.46.0",
 ]
