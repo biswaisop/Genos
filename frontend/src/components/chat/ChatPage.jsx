@@ -6,8 +6,10 @@ import {
 import { API_BASE_URL } from '../../lib/authApi'
 
 function buildWsUrl(serverId, token) {
-  const base = API_BASE_URL.replace(/^http/i, 'ws')
-  return `${base}/api/v1/agents/ws/${encodeURIComponent(serverId)}?token=${encodeURIComponent(token)}`
+  const wsBase = API_BASE_URL
+    ? API_BASE_URL.replace(/^http/i, 'ws')
+    : `${window.location.protocol === 'https:' ? 'wss' : 'ws'}://${window.location.host}`
+  return `${wsBase}/api/v1/agents/ws/${encodeURIComponent(serverId)}?token=${encodeURIComponent(token)}`
 }
 
 function ChatPage() {
