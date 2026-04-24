@@ -24,6 +24,7 @@ function getRouteFromPath(pathname) {
 function App() {
   const [route, setRoute] = useState(getRouteFromPath(window.location.pathname))
   const [currentUser, setCurrentUser] = useState(null)
+  const [authReady, setAuthReady] = useState(false)
 
   const navLinks = [
     { label: 'How it works', href: '#how-it-works' },
@@ -83,14 +84,27 @@ function App() {
 
   useEffect(() => {
     const token = localStorage.getItem('genos_access_token')
-    if (!token) return
+    if (!token) {
+      setAuthReady(true)
+      return
+    }
 
     getMe(token)
       .then((user) => setCurrentUser(user))
       .catch(() => {
         localStorage.removeItem('genos_access_token')
       })
+      .finally(() => {
+        setAuthReady(true)
+      })
   }, [])
+
+  useEffect(() => {
+    if (!authReady) return
+    if (route !== 'dashboard') return
+    if (currentUser) return
+    navigateTo('/signin')
+  }, [authReady, route, currentUser])
 
   useEffect(() => {
     const handlePopState = () => {
@@ -257,7 +271,7 @@ function App() {
           <a href="#hero">Back to top</a>
         </footer>
         </main>
-      ) : route === 'dashboard' ? (
+      ) : route === 'dashboard' && currentUser ? (
         <DashboardPage
           onAddConnection={() => navigateTo('/create-connection')}
           onOpenChat={(serverId) => navigateTo(`/chat?serverId=${encodeURIComponent(serverId)}`)}
