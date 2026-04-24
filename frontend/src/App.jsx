@@ -6,12 +6,14 @@ import Beams from './components/backgrounds/Beams'
 import CursorGlow from './components/backgrounds/CursorGlow'
 import GradientText from './components/text/GradientText'
 import AuthPage from './components/auth/AuthPage'
+import DashboardPage from './components/dashboard/DashboardPage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
 function getRouteFromPath(pathname) {
   if (pathname === '/signin') return 'signin'
   if (pathname === '/signup') return 'signup'
+  if (pathname === '/dashboard') return 'dashboard'
   return 'home'
 }
 
@@ -127,20 +129,31 @@ function App() {
         brand="GenOS"
         links={route === 'home' ? navLinks : []}
         ctaLabel={
-          currentUser
-            ? 'Signed in'
-            : route === 'home'
-              ? 'Sign up'
-              : 'Back home'
+          route === 'dashboard'
+            ? ''
+            : currentUser
+              ? 'Dashboard'
+              : route === 'home'
+                ? 'Sign up'
+                : 'Back home'
         }
         onCtaClick={(event) => {
           event.preventDefault()
-          if (currentUser) return
+          if (route === 'dashboard') return
+          if (currentUser) {
+            navigateTo(route === 'dashboard' ? '/' : '/dashboard')
+            return
+          }
           if (route === 'home') {
             navigateTo('/signup')
             return
           }
           navigateTo('/')
+        }}
+        onProfileClick={() => {
+          if (route === 'home' && !currentUser) {
+            navigateTo('/signin')
+          }
         }}
       />
 
@@ -233,6 +246,8 @@ function App() {
           <a href="#hero">Back to top</a>
         </footer>
         </main>
+      ) : route === 'dashboard' ? (
+        <DashboardPage />
       ) : (
         <AuthPage
           mode={authMode}
