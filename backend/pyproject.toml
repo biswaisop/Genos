@@ -11,6 +11,7 @@ dependencies = [
     "hvac>=2.4.0",
     "langchain>=1.2.15",
     "langchain-groq>=1.1.2",
+    "langchain-openrouter>=0.2.1",
     "langgraph>=1.1.9",
     "motor>=3.7.1",
     "paramiko>=4.0.0",

@@ -26,6 +26,7 @@ langgraph-checkpoint==4.0.2
 langgraph-prebuilt==1.0.10
 langgraph-sdk==0.3.13
 langsmith==0.7.35
+langchain-groq>=0.2.0
 motor==3.7.1
 orjson==3.11.8
 ormsgpack==1.12.2

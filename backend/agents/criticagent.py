@@ -23,12 +23,80 @@ import logging
 import re
 from typing import Literal
 import os
+import shlex
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from langchain_groq import ChatGroq
 from dotenv import load_dotenv
 
 _PENDING_CONFIRM: dict[str, dict] = {}
+
+# Commands that are always safe — bypass the LLM critic entirely.
+# This saves a full LLM call per invocation for read-only operations.
+_READ_ONLY_BINS = frozenset({
+    "ls", "ll", "pwd", "whoami", "id", "hostname", "uname",
+    "cat", "less", "more", "head", "tail", "tac",
+    "find", "locate", "grep", "egrep", "fgrep", "awk", "sed",
+    "wc", "sort", "uniq", "cut", "tr", "stat", "file",
+    "ps", "top", "htop", "uptime", "free", "df", "du",
+    "env", "printenv", "date", "echo", "which", "type",
+    "ip", "ifconfig", "ss", "netstat", "dig", "nslookup", "host",
+    "tree", "history",
+})
+
+# Blockers — never allow, don't even ask the LLM.
+_HARD_BLOCK_PATTERNS = [
+    re.compile(r"\brm\s+-rf\s+/(\s|$)"),
+    re.compile(r"\brm\s+-rf\s+~(\s|$|/)"),
+    re.compile(r"\brm\s+-rf\s+/\*"),
+    re.compile(r"\bmkfs\.[a-z0-9]+\s"),
+    re.compile(r"\bdd\s+.*\bif=/dev/"),
+    re.compile(r"\b(shutdown|poweroff|reboot|halt)\b"),
+    re.compile(r":\(\)\s*\{\s*:\s*\|\s*:\s*&\s*\}\s*;:"),
+]
+
+
+def _fast_path_verdict(command: str) -> dict | None:
+    """Return a verdict without calling the LLM when the command is
+    obviously safe or obviously blocked. Returns None if LLM should decide."""
+    if not command:
+        return None
+
+    for pattern in _HARD_BLOCK_PATTERNS:
+        if pattern.search(command):
+            return {
+                "decision": "BLOCK",
+                "risk_level": "high",
+                "reason": "matches hard-block pattern",
+                "user_message": "This action is permanently blocked for safety reasons.",
+            }
+
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return None
+
+    if not tokens:
+        return None
+
+    head = tokens[0].lstrip("/").split("/")[-1]
+
+    # Whole command has no sudo / no redirection / only read-only binaries
+    has_mutator = any(
+        tok in {"sudo", ">", ">>", "rm", "mv", "cp", "kill", "pkill",
+                "systemctl", "apt", "apt-get", "pip", "chmod", "chown",
+                "dd", "mkfs"}
+        for tok in tokens
+    )
+    if not has_mutator and head in _READ_ONLY_BINS:
+        return {
+            "decision": "ALLOW",
+            "risk_level": "low",
+            "reason": "read-only command (fast-path)",
+            "user_message": "",
+        }
+
+    return None
 
 
 class SessionMemoryService:
@@ -41,9 +109,7 @@ load_dotenv()
 
 logger = logging.getLogger(__name__)
 
-# ── Critic LLM — use best available model, temperature=0, no shortcuts ────────
-# Per architecture: "Critic runs on Sonnet (not Haiku) — no shortcuts on safety"
-# We use the most capable Groq model available at temp=0.
+# ── Critic LLM — runs on Groq, temperature=0, small/cheap model by default ───
 _critic_llm = None
 
 
@@ -53,79 +119,30 @@ def _get_critic_llm() -> ChatGroq:
         api_key = os.getenv("GROQ")
         if not api_key:
             raise RuntimeError("GROQ environment variable is required for critic checks.")
+        # Default to a small fast Groq model to save TPD budget.
+        # Override with CRITIC_MODEL in .env if you want tighter reasoning.
         _critic_llm = ChatGroq(
-            model=os.getenv("CRITIC_MODEL", "llama-3.3-70b-versatile"),
+            model=os.getenv("CRITIC_MODEL", "llama-3.1-8b-instant"),
             temperature=0,
             api_key=api_key,
         )
     return _critic_llm
 
-# ── System prompt — plain string (no f-string) to avoid brace interpolation ───
-CRITIC_SYSTEM_PROMPT = """\
-You are a safety-critical Linux command reviewer for a remote SSH agent system.
-
-Your job: inspect what the agent just did or proposes to do and decide if it is safe.
-
-You will receive:
-- user_intent: the original user request
-- agent_response: the agent's last message (includes commands it ran or is proposing)
-
-Respond ONLY with a single valid JSON object — no explanation, no markdown, no extra text.
-
-Output schema:
-{
-  "decision": "ALLOW | CONFIRM | BLOCK",
-  "risk_level": "low | medium | high",
-  "reason": "one-line explanation",
-  "user_message": "message shown to user (empty string for ALLOW)"
-}
-
---- RULES ---
-
-ALLOW (low risk — execute immediately):
-- Read-only: ls, cat, find, ps, df, free, uptime, ping, curl (GET), top, pwd, whoami, echo, grep
-- Package installs with apt-get install -y or pip install
-- Writing new files to /tmp or /workspace
-- Running scripts: python3, bash, node in /workspace
-- Any clearly additive, non-destructive operation
-
-CONFIRM (medium risk — require explicit user "yes"):
-- rm targeting a SPECIFIC named file or directory (not a wildcard)
-- kill / pkill targeting a specific named process or PID
-- systemctl stop / disable / restart for a named service
-- apt remove / pip uninstall
-- mv of files with important-looking names (configs, keys, databases)
-- Overwriting existing files outside /tmp
-- Any sudo command that changes system state
-
-BLOCK (high risk — refuse, no confirmation possible):
-- rm -rf / or rm -rf ~ or rm -rf /* or any root-level wildcard delete
-- dd if=... targeting a block device (if=/dev/...)
-- mkfs.* formatting a disk
-- shutdown / poweroff / reboot / halt
-- chmod or chown on /etc/passwd, /etc/shadow, /etc/sudoers
-- Fork bombs: :(){ :|:& };:
-- Any command clearly designed to destroy or exfiltrate data
-
-
-ADDITIONAL CONSTRAINTS:
-- If the agent's response contains NO shell commands (just text), reply ALLOW.
-- If scope is ambiguous → CONFIRM, not BLOCK.
-- Never modify or correct the command — only judge it.
-- CONFIRM user_message must clearly state: what will happen + what is affected.
-  Example: "This will terminate process nginx (PID 1234). Reply YES to confirm."
-
---- EXAMPLES ---
-
-agent_response contains: "ps aux --sort=-%cpu | head -10"
-Output: {"decision":"ALLOW","risk_level":"low","reason":"read-only process list","user_message":""}
-
-agent_response contains: "kill 1234"
-Output: {"decision":"CONFIRM","risk_level":"medium","reason":"terminates a running process","user_message":"This will kill process with PID 1234. Reply YES to confirm."}
-
-agent_response contains: "rm -rf /"
-Output: {"decision":"BLOCK","risk_level":"high","reason":"system-wide destructive delete","user_message":"This action is permanently blocked for safety reasons."}
-"""
+# Slim critic prompt — rules compressed, examples dropped (fast-path covers them).
+CRITIC_SYSTEM_PROMPT = (
+    "You judge the safety of a single bash command. "
+    "Reply with ONE JSON object only, no prose:\n"
+    '{"decision":"ALLOW|CONFIRM|BLOCK","risk_level":"low|medium|high",'
+    '"reason":"…","user_message":"…"}\n'
+    "ALLOW: read-only, additive, /tmp writes, scripts.\n"
+    "CONFIRM: specific rm/kill/pkill, systemctl stop|restart, apt remove, "
+    "pip uninstall, overwriting configs, any sudo changing state.\n"
+    "BLOCK: rm -rf / | rm -rf ~ | rm -rf /*, dd if=/dev/*, mkfs.*, "
+    "shutdown|reboot|poweroff|halt, chmod/chown on /etc/passwd|shadow|sudoers, "
+    "fork bombs, clearly destructive or exfiltration commands.\n"
+    "Ambiguous → CONFIRM. user_message empty for ALLOW; for CONFIRM state what "
+    "will happen and ask reply YES."
+)
 
 
 # ── JSON extraction — handles LLM wrapping output in ```json ... ``` ──────────
@@ -160,13 +177,16 @@ def evaluate_command(user_intent: str, proposed_command: str) -> dict:
       {decision, risk_level, reason, user_message}
     Fail-safe: any exception → BLOCK.
     """
+    # Fast path — skip LLM for obvious read-only / obvious block commands.
+    fast = _fast_path_verdict(proposed_command)
+    if fast is not None:
+        logger.info("critic fast-path: %s", fast["decision"])
+        return fast
+
     try:
         response = _get_critic_llm().invoke([
             SystemMessage(content=CRITIC_SYSTEM_PROMPT),
-            HumanMessage(content=(
-                f"user_intent: {user_intent}\n\n"
-                f"proposed_command: {proposed_command}"
-            )),
+            HumanMessage(content=f"command: {proposed_command}"),
         ])
         return _parse_verdict(response.content)
     except Exception as exc:

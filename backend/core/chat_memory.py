@@ -80,7 +80,7 @@ class ChatMemoryService:
                     "last_active": now,
                     "expires_at": expires,
                 },
-                "$setOnInsert": {"started_at": now, "message_count": 0},
+                "$setOnInsert": {"started_at": now},
                 "$inc": {"message_count": 1},
             },
             upsert=True,

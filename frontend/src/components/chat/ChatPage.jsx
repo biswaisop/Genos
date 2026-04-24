@@ -1,9 +1,25 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import BorderGlow from '../common/BorderGlow'
 import {
   listServers,
 } from '../../lib/serverApi'
 import { API_BASE_URL } from '../../lib/authApi'
+
+const BUBBLE_ROLE_LABEL = {
+  user: 'You',
+  output: 'GenOS',
+  message: 'GenOS',
+  assistant: 'GenOS',
+  history: 'History',
+  confirm: 'GenOS · Needs approval',
+  error: 'Error',
+}
+
+function isLikelyCommandOutput(content) {
+  if (!content) return false
+  if (content.includes('\n')) return true
+  return /[\s]{2,}|\$\s|^\//.test(content)
+}
 
 function buildWsUrl(serverId, token) {
   const wsBase = API_BASE_URL
@@ -34,6 +50,16 @@ function ChatPage() {
   const [messages, setMessages] = useState([])
   const [traceMessages, setTraceMessages] = useState([])
   const [socketState, setSocketState] = useState('idle')
+  const messagesEndRef = useRef(null)
+  const traceEndRef = useRef(null)
+
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [messages])
+
+  useEffect(() => {
+    traceEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [traceMessages])
 
   const pushMessage = useCallback((type, content) => {
     setMessages((prev) => [...prev, { id: `${Date.now()}-${Math.random()}`, type, content }])
@@ -208,10 +234,35 @@ function ChatPage() {
     setChatInput('')
   }
 
+  const socketBadge = useMemo(() => {
+    if (socketState === 'connected') return { label: 'Connected', tone: 'ok' }
+    if (socketState === 'connecting') return { label: 'Connecting...', tone: 'warn' }
+    if (socketState === 'error') return { label: 'Connection error', tone: 'err' }
+    if (socketState === 'closed') return { label: 'Disconnected', tone: 'warn' }
+    return { label: 'Idle', tone: 'warn' }
+  }, [socketState])
+
   return (
     <main className="chat-main">
       <section className="chat-header">
         <h1>GenOS Chat Console</h1>
+        <div className="chat-header-meta">
+          <span className={`chat-status-badge chat-status-badge--${socketBadge.tone}`}>
+            <span className="chat-status-dot" />
+            {socketBadge.label}
+          </span>
+          {selectedServerId ? (
+            <span className="chat-server-pill">{selectedServerId}</span>
+          ) : null}
+          <button
+            type="button"
+            className="chat-btn chat-btn--ghost"
+            onClick={() => setMessages([])}
+            disabled={messages.length === 0}
+          >
+            Clear
+          </button>
+        </div>
       </section>
 
       <section className="chat-layout">
@@ -224,24 +275,51 @@ function ChatPage() {
                 <p>{item.content}</p>
               </article>
             ))}
+            <div ref={traceEndRef} />
           </div>
         </BorderGlow>
 
         <BorderGlow as="section" className="chat-panel" glowColor="270 100% 75%">
           <div className="chat-messages">
-            {messages.length === 0 ? <p className="chat-muted">No messages yet.</p> : null}
-            {messages.map((item) => (
-              <article key={item.id} className={`chat-bubble chat-bubble--${item.type}`}>
-                <p>{item.content}</p>
-              </article>
-            ))}
+            {messages.length === 0 ? (
+              <p className="chat-muted">No messages yet. Type a command below to get started.</p>
+            ) : null}
+            {messages.map((item) => {
+              const role = BUBBLE_ROLE_LABEL[item.type] || 'GenOS'
+              const isUser = item.type === 'user'
+              const isTerminal =
+                !isUser && item.type !== 'confirm' && item.type !== 'error' && isLikelyCommandOutput(item.content)
+              const bubbleClasses = [
+                'chat-bubble',
+                `chat-bubble--${item.type}`,
+                isUser ? 'chat-bubble--align-right' : 'chat-bubble--align-left',
+                isTerminal ? 'chat-bubble--terminal' : '',
+              ]
+                .filter(Boolean)
+                .join(' ')
+              return (
+                <article key={item.id} className={bubbleClasses}>
+                  <span className="chat-bubble-role">{role}</span>
+                  {isTerminal ? (
+                    <pre className="chat-bubble-terminal">{item.content}</pre>
+                  ) : (
+                    <p>{item.content}</p>
+                  )}
+                </article>
+              )
+            })}
+            <div ref={messagesEndRef} />
           </div>
 
           <form className="chat-send-form" onSubmit={sendChatMessage}>
             <input
               value={chatInput}
               onChange={(event) => setChatInput(event.target.value)}
-              placeholder={socketState === 'connected' ? 'Type command for GenOS...' : 'Waiting for socket connection...'}
+              placeholder={
+                socketState === 'connected'
+                  ? 'Type a command for GenOS (yes / no to respond to confirmations)...'
+                  : 'Waiting for socket connection...'
+              }
             />
             <button type="submit" className="chat-btn" disabled={socketState !== 'connected'}>
               Send

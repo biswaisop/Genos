@@ -184,6 +184,22 @@ def _route_after_approval(state: State) -> Literal["executor", "__end__"]:
 
 # ── 5. Executor node ──────────────────────────────────────────────────────────
 
+# Cap the copy of the output that gets written into the message log that future
+# LLM calls can see. Raw output still flows to the WebSocket untouched.
+MAX_MSG_OUTPUT_CHAR = 600
+
+
+def _truncate_for_memory(text: str, limit: int = MAX_MSG_OUTPUT_CHAR) -> str:
+    if not text:
+        return ""
+    text = str(text)
+    if len(text) <= limit:
+        return text
+    head = text[: limit // 2]
+    tail = text[-limit // 2 :]
+    return f"{head}\n…[{len(text) - limit} chars truncated]…\n{tail}"
+
+
 def make_executor(connector):
     def executor_node(state: State) -> dict:
         command = state.get("proposed_command", "")
@@ -193,12 +209,7 @@ def make_executor(connector):
 
         return {
             "execution_output": output,
-            "messages": [
-                AIMessage(content=(
-                    f"[OK] **Command executed:**\n```\n{command}\n```\n\n"
-                    f"**Output:**\n```\n{output}\n```"
-                ))
-            ],
+            "messages": [AIMessage(content=_truncate_for_memory(output))],
         }
     return executor_node
 

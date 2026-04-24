@@ -241,12 +241,15 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                 })
             else:
                 # Finished executing completely
-                # Extract the last AI message
+                # Prefer the raw command output (full, untruncated) over the
+                # in-graph AIMessage (which is truncated to save LLM tokens).
+                raw_output = result.get("execution_output")
                 found_msg = False
                 for msg in reversed(result["messages"]):
                     if isinstance(msg, AIMessage) and msg.content:
-                        await websocket.send_json({"type": "output", "content": msg.content})
-                        await memory.append_short_message(thread_id, "assistant", msg.content)
+                        display_content = raw_output if raw_output else msg.content
+                        await websocket.send_json({"type": "output", "content": display_content})
+                        await memory.append_short_message(thread_id, "assistant", display_content)
 
                         latest_user = ""
                         for user_msg in result["messages"]:
