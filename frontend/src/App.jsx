@@ -7,6 +7,8 @@ import CursorGlow from './components/backgrounds/CursorGlow'
 import GradientText from './components/text/GradientText'
 import AuthPage from './components/auth/AuthPage'
 import DashboardPage from './components/dashboard/DashboardPage'
+import CreateConnectionPage from './components/connections/CreateConnectionPage'
+import ChatPage from './components/chat/ChatPage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
@@ -14,6 +16,8 @@ function getRouteFromPath(pathname) {
   if (pathname === '/signin') return 'signin'
   if (pathname === '/signup') return 'signup'
   if (pathname === '/dashboard') return 'dashboard'
+  if (pathname === '/create-connection') return 'create-connection'
+  if (pathname === '/chat') return 'chat'
   return 'home'
 }
 
@@ -98,10 +102,11 @@ function App() {
   }, [])
 
   const navigateTo = (path) => {
-    if (window.location.pathname !== path) {
+    const currentPath = `${window.location.pathname}${window.location.search}`
+    if (currentPath !== path) {
       window.history.pushState({}, '', path)
     }
-    setRoute(getRouteFromPath(path))
+    setRoute(getRouteFromPath(new URL(path, window.location.origin).pathname))
   }
 
   const authMode = route === 'signin' ? 'signin' : route === 'signup' ? 'signup' : null
@@ -131,6 +136,10 @@ function App() {
         ctaLabel={
           route === 'dashboard'
             ? ''
+            : route === 'create-connection'
+            ? ''
+            : route === 'chat'
+            ? ''
             : currentUser
               ? 'Dashboard'
               : route === 'home'
@@ -140,6 +149,8 @@ function App() {
         onCtaClick={(event) => {
           event.preventDefault()
           if (route === 'dashboard') return
+          if (route === 'create-connection') return
+          if (route === 'chat') return
           if (currentUser) {
             navigateTo(route === 'dashboard' ? '/' : '/dashboard')
             return
@@ -247,14 +258,21 @@ function App() {
         </footer>
         </main>
       ) : route === 'dashboard' ? (
-        <DashboardPage />
+        <DashboardPage
+          onAddConnection={() => navigateTo('/create-connection')}
+          onOpenChat={(serverId) => navigateTo(`/chat?serverId=${encodeURIComponent(serverId)}`)}
+        />
+      ) : route === 'create-connection' ? (
+        <CreateConnectionPage />
+      ) : route === 'chat' ? (
+        <ChatPage />
       ) : (
         <AuthPage
           mode={authMode}
           onModeChange={(mode) => navigateTo(mode === 'signin' ? '/signin' : '/signup')}
           onAuthSuccess={(user) => {
             setCurrentUser(user)
-            navigateTo('/')
+            navigateTo('/dashboard')
           }}
         />
       )}
