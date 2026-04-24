@@ -23,6 +23,12 @@ function ChatPage() {
   const requestedServerId = new URLSearchParams(window.location.search).get('serverId') || ''
 
   useEffect(() => {
+    if (requestedServerId) {
+      setSelectedServerId(requestedServerId)
+    }
+  }, [requestedServerId])
+
+  useEffect(() => {
     return () => {
       if (wsRef.current) wsRef.current.close()
     }
@@ -43,7 +49,7 @@ function ChatPage() {
           return
         }
       }
-      if (!selectedServerId && Array.isArray(data) && data[0]?.server_id) {
+      if (!selectedServerId && !requestedServerId && Array.isArray(data) && data[0]?.server_id) {
         setSelectedServerId(data[0].server_id)
       }
     } catch (error) {
@@ -126,7 +132,11 @@ function ChatPage() {
   function sendChatMessage(event) {
     event.preventDefault()
     const input = chatInput.trim()
-    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !input) return
+    if (!input) return
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) {
+      pushMessage('error', 'Socket is not connected yet. Please wait a moment and retry.')
+      return
+    }
     if (input.toLowerCase() === 'yes' || input.toLowerCase() === 'no') {
       wsRef.current.send(JSON.stringify({ resume: input }))
       pushMessage('user', `[resume] ${input}`)

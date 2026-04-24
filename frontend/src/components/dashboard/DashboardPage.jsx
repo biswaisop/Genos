@@ -7,6 +7,7 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
+  const [actionLoading, setActionLoading] = useState('')
   const token = localStorage.getItem('genos_access_token')
 
   const onlineConnections = useMemo(
@@ -36,18 +37,34 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
   }
 
   async function handleAction(action, serverId) {
-    if (!token || !serverId) return
+    if (!token) {
+      setFeedback('Session expired. Please sign in again.')
+      return
+    }
+    if (!serverId) {
+      setFeedback('This connection is missing a server ID, so this action cannot run.')
+      return
+    }
     try {
+      setActionLoading(`${action}:${serverId}`)
+      setFeedback('')
       if (action === 'connect') {
         await connectServer(token, serverId)
+        setFeedback(`Reconnected ${serverId}.`)
       } else if (action === 'disconnect') {
         await disconnectServer(token, serverId)
+        setFeedback(`Disconnected ${serverId}.`)
       } else if (action === 'delete') {
         await deleteServer(token, serverId)
+        setFeedback(`Removed ${serverId}.`)
       }
+      setActionsOpenFor(null)
       await refreshConnections()
     } catch (error) {
-      setFeedback(error.message || `Failed to ${action} connection.`)
+      const detail = error?.payload?.detail || error.message
+      setFeedback(detail || `Failed to ${action} connection.`)
+    } finally {
+      setActionLoading('')
     }
   }
 
@@ -122,9 +139,21 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                         <div className="connection-menu-dropdown">
                           <button
                             type="button"
+                            disabled={actionLoading === `disconnect:${connection.server_id}`}
+                            onClick={() => handleAction('disconnect', connection.server_id)}
+                          >
+                            {actionLoading === `disconnect:${connection.server_id}`
+                              ? 'Disconnecting...'
+                              : 'Disconnect'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionLoading === `delete:${connection.server_id}`}
                             onClick={() => handleAction('delete', connection.server_id)}
                           >
-                            Remove connection
+                            {actionLoading === `delete:${connection.server_id}`
+                              ? 'Removing...'
+                              : 'Remove connection'}
                           </button>
                         </div>
                       ) : null}
@@ -139,17 +168,11 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     <p className="connection-active-since">
                       Active since: {connection.last_connected_at || 'Recently'}
                     </p>
-                    <button
-                      type="button"
-                      className="connection-action-btn disconnect"
-                      onClick={() => handleAction('disconnect', connection.server_id)}
-                    >
-                      Disconnect
-                    </button>
                   </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
+                    disabled={!connection.server_id}
                     onClick={() => onOpenChat(connection.server_id)}
                   >
                     Open chat
@@ -191,9 +214,21 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                         <div className="connection-menu-dropdown">
                           <button
                             type="button"
+                            disabled={actionLoading === `connect:${connection.server_id}`}
+                            onClick={() => handleAction('connect', connection.server_id)}
+                          >
+                            {actionLoading === `connect:${connection.server_id}`
+                              ? 'Reconnecting...'
+                              : 'Reconnect'}
+                          </button>
+                          <button
+                            type="button"
+                            disabled={actionLoading === `delete:${connection.server_id}`}
                             onClick={() => handleAction('delete', connection.server_id)}
                           >
-                            Remove connection
+                            {actionLoading === `delete:${connection.server_id}`
+                              ? 'Removing...'
+                              : 'Remove connection'}
                           </button>
                         </div>
                       ) : null}
@@ -208,17 +243,11 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     <p className="connection-active-since">
                       Disconnected: {connection.last_connected_at || 'Unknown'}
                     </p>
-                    <button
-                      type="button"
-                      className="connection-action-btn reconnect"
-                      onClick={() => handleAction('connect', connection.server_id)}
-                    >
-                      Reconnect
-                    </button>
                   </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
+                    disabled={!connection.server_id}
                     onClick={() => onOpenChat(connection.server_id)}
                   >
                     Open chat
