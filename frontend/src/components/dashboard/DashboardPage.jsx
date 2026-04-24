@@ -1,36 +1,59 @@
-import { useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import BorderGlow from '../common/BorderGlow'
+import { connectServer, deleteServer, disconnectServer, listServers } from '../../lib/serverApi'
 
-const mockConnections = [
-  {
-    name: 'Prod API Server',
-    status: 'Online',
-    lastSeen: '2 min ago',
-    recentCommands: ['docker ps', 'systemctl restart nginx', 'tail -n 100 /var/log/app.log'],
-  },
-  {
-    name: 'Staging Worker',
-    status: 'Online',
-    lastSeen: '5 min ago',
-    recentCommands: ['python worker.py --sync', 'ls -la /srv/jobs', 'journalctl -u worker -n 50'],
-  },
-  {
-    name: 'Analytics Node',
-    status: 'Disconnected',
-    lastSeen: '12 min ago',
-    recentCommands: ['htop', 'df -h', 'python run_etl.py --dry-run'],
-  },
-]
-
-function DashboardPage() {
-  const [expandedCard, setExpandedCard] = useState(null)
+function DashboardPage({ onAddConnection, onOpenChat }) {
   const [actionsOpenFor, setActionsOpenFor] = useState(null)
-  const onlineConnections = mockConnections.filter(
-    (connection) => connection.status === 'Online',
+  const [connections, setConnections] = useState([])
+  const [loading, setLoading] = useState(false)
+  const [feedback, setFeedback] = useState('')
+  const token = localStorage.getItem('genos_access_token')
+
+  const onlineConnections = useMemo(
+    () => connections.filter((connection) => connection.status === 'connected'),
+    [connections],
   )
-  const disconnectedConnections = mockConnections.filter(
-    (connection) => connection.status !== 'Online',
+  const disconnectedConnections = useMemo(
+    () => connections.filter((connection) => connection.status !== 'connected'),
+    [connections],
   )
+
+  async function refreshConnections() {
+    if (!token) {
+      setFeedback('Please sign in to view connections.')
+      return
+    }
+    try {
+      setLoading(true)
+      const data = await listServers(token)
+      setConnections(Array.isArray(data) ? data : [])
+      setFeedback('')
+    } catch (error) {
+      setFeedback(error.message || 'Could not load connections.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  async function handleAction(action, serverId) {
+    if (!token || !serverId) return
+    try {
+      if (action === 'connect') {
+        await connectServer(token, serverId)
+      } else if (action === 'disconnect') {
+        await disconnectServer(token, serverId)
+      } else if (action === 'delete') {
+        await deleteServer(token, serverId)
+      }
+      await refreshConnections()
+    } catch (error) {
+      setFeedback(error.message || `Failed to ${action} connection.`)
+    }
+  }
+
+  useEffect(() => {
+    refreshConnections()
+  }, [])
 
   return (
     <main className="dashboard-main">
@@ -42,40 +65,46 @@ function DashboardPage() {
       <section className="dashboard-stats" aria-label="Connection summary">
         <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
           <h2>Total connections</h2>
-          <p>{mockConnections.length}</p>
+          <p>{connections.length}</p>
         </BorderGlow>
         <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
           <h2>Online</h2>
-          <p>{mockConnections.filter((item) => item.status === 'Online').length}</p>
+          <p>{onlineConnections.length}</p>
         </BorderGlow>
         <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
           <h2>Disconnected</h2>
-          <p>{mockConnections.filter((item) => item.status !== 'Online').length}</p>
+          <p>{disconnectedConnections.length}</p>
         </BorderGlow>
       </section>
 
       <section className="dashboard-connections" aria-label="Existing connections">
         <div className="dashboard-connections__heading">
           <h2>Existing connections</h2>
-          <button type="button" className="dashboard-add-btn">
-            + Add connection
-          </button>
+          <div className="dashboard-connections-actions">
+            <button type="button" className="dashboard-add-btn" onClick={refreshConnections}>
+              {loading ? 'Refreshing...' : 'Refresh'}
+            </button>
+            <button type="button" className="dashboard-add-btn" onClick={onAddConnection}>
+              + Add connection
+            </button>
+          </div>
         </div>
+        {feedback ? <p className="dashboard-feedback">{feedback}</p> : null}
 
         <div className="dashboard-connection-group">
           <h3>Online connections</h3>
           <div className="dashboard-grid">
             {onlineConnections.map((connection) => (
               <BorderGlow
-                key={connection.name}
+                key={connection.server_id || connection.name}
                 as="article"
                 className="dashboard-connection-card"
                 glowColor="270 100% 75%"
               >
                 <div className="dashboard-connection-top">
-                  <h3>{connection.name}</h3>
+                  <h3>{connection.name || connection.server_id}</h3>
                   <div className="connection-top-right">
-                    <span className="connection-status ok">{connection.status}</span>
+                    <span className="connection-status ok">Online</span>
                     <div className="connection-actions-menu">
                       <button
                         type="button"
@@ -83,55 +112,49 @@ function DashboardPage() {
                         aria-label="Connection options"
                         onClick={() =>
                           setActionsOpenFor((prev) =>
-                            prev === connection.name ? null : connection.name,
+                            prev === connection.server_id ? null : connection.server_id,
                           )
                         }
                       >
                         ...
                       </button>
-                      {actionsOpenFor === connection.name ? (
+                      {actionsOpenFor === connection.server_id ? (
                         <div className="connection-menu-dropdown">
-                          <button type="button">Remove connection</button>
+                          <button
+                            type="button"
+                            onClick={() => handleAction('delete', connection.server_id)}
+                          >
+                            Remove connection
+                          </button>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 </div>
                 <ul className="connection-details">
-                  <li>Type: VPS</li>
+                  <li>Host: {connection.host || 'N/A'}</li>
                 </ul>
                 <div className="connection-meta-row">
                   <div className="connection-meta-left">
                     <p className="connection-active-since">
-                      Active since: {connection.lastSeen}
+                      Active since: {connection.last_connected_at || 'Recently'}
                     </p>
-                    <button type="button" className="connection-action-btn disconnect">
+                    <button
+                      type="button"
+                      className="connection-action-btn disconnect"
+                      onClick={() => handleAction('disconnect', connection.server_id)}
+                    >
                       Disconnect
                     </button>
                   </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
-                    onClick={() =>
-                      setExpandedCard((prev) =>
-                        prev === connection.name ? null : connection.name,
-                      )
-                    }
+                    onClick={() => onOpenChat(connection.server_id)}
                   >
-                    Recent Commands
+                    Open chat
                   </button>
                 </div>
-                {expandedCard === connection.name ? (
-                  <div className="recent-commands-dropdown">
-                    <ul>
-                      {connection.recentCommands.slice(0, 3).map((command) => (
-                        <li key={command}>
-                          <code>{command}</code>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
               </BorderGlow>
             ))}
           </div>
@@ -142,15 +165,15 @@ function DashboardPage() {
           <div className="dashboard-grid">
             {disconnectedConnections.map((connection) => (
               <BorderGlow
-                key={connection.name}
+                key={connection.server_id || connection.name}
                 as="article"
                 className="dashboard-connection-card"
                 glowColor="270 100% 75%"
               >
                 <div className="dashboard-connection-top">
-                  <h3>{connection.name}</h3>
+                  <h3>{connection.name || connection.server_id}</h3>
                   <div className="connection-top-right">
-                    <span className="connection-status warn">{connection.status}</span>
+                    <span className="connection-status warn">Disconnected</span>
                     <div className="connection-actions-menu">
                       <button
                         type="button"
@@ -158,55 +181,49 @@ function DashboardPage() {
                         aria-label="Connection options"
                         onClick={() =>
                           setActionsOpenFor((prev) =>
-                            prev === connection.name ? null : connection.name,
+                            prev === connection.server_id ? null : connection.server_id,
                           )
                         }
                       >
                         ...
                       </button>
-                      {actionsOpenFor === connection.name ? (
+                      {actionsOpenFor === connection.server_id ? (
                         <div className="connection-menu-dropdown">
-                          <button type="button">Remove connection</button>
+                          <button
+                            type="button"
+                            onClick={() => handleAction('delete', connection.server_id)}
+                          >
+                            Remove connection
+                          </button>
                         </div>
                       ) : null}
                     </div>
                   </div>
                 </div>
                 <ul className="connection-details">
-                  <li>Type: VPS</li>
+                  <li>Host: {connection.host || 'N/A'}</li>
                 </ul>
                 <div className="connection-meta-row">
                   <div className="connection-meta-left">
                     <p className="connection-active-since">
-                      Disconnected: {connection.lastSeen}
+                      Disconnected: {connection.last_connected_at || 'Unknown'}
                     </p>
-                    <button type="button" className="connection-action-btn reconnect">
+                    <button
+                      type="button"
+                      className="connection-action-btn reconnect"
+                      onClick={() => handleAction('connect', connection.server_id)}
+                    >
                       Reconnect
                     </button>
                   </div>
                   <button
                     type="button"
                     className="recent-commands-btn"
-                    onClick={() =>
-                      setExpandedCard((prev) =>
-                        prev === connection.name ? null : connection.name,
-                      )
-                    }
+                    onClick={() => onOpenChat(connection.server_id)}
                   >
-                    Recent Commands
+                    Open chat
                   </button>
                 </div>
-                {expandedCard === connection.name ? (
-                  <div className="recent-commands-dropdown">
-                    <ul>
-                      {connection.recentCommands.slice(0, 3).map((command) => (
-                        <li key={command}>
-                          <code>{command}</code>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                ) : null}
               </BorderGlow>
             ))}
           </div>
