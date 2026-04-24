@@ -1,0 +1,45 @@
+import os
+from motor.motor_asyncio import AsyncIOMotorClient
+from pymongo import ASCENDING, DESCENDING
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# Initialize the async motor client
+mongo_uri = os.getenv("MONGOURI", "mongodb://localhost:27017")
+client = AsyncIOMotorClient(
+    mongo_uri,
+    maxPoolSize=100,        # max concurrent connections
+    minPoolSize=5,          # keep 5 alive even when idle
+    serverSelectionTimeoutMS=5000  # fail fast if DB is unreachable
+)
+
+db = client[os.getenv("DBNAME", "GenOS")]
+
+# Define collections
+users_collection = db["Users"]
+servers_collection = db["Servers"]
+commands_collection = db["Commands"]
+sessions_collection = db["Sessions"]
+
+async def create_indexes():
+    """Create essential asynchronous indexes upon startup."""
+    # User indexes
+    await users_collection.create_index([("email", ASCENDING)], unique=True)
+    
+    # Server indexes
+    # Using server_id (defined in doc as host@username usually, or unique srv_ id)
+    await servers_collection.create_index([("server_id", ASCENDING)], unique=True)
+    await servers_collection.create_index([("owner_id", ASCENDING)])
+    
+    # Commands / History indexes
+    await commands_collection.create_index([("command_id", ASCENDING)], unique=True)
+    await commands_collection.create_index([("user_id", ASCENDING), ("created_at", DESCENDING)])
+    await commands_collection.create_index([("server_id", ASCENDING), ("created_at", DESCENDING)])
+    await commands_collection.create_index([("session_id", ASCENDING)])
+    
+    # Session indexes
+    await sessions_collection.create_index([("session_id", ASCENDING)], unique=True)
+    
+def getdb():
+    return db
