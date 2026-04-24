@@ -111,9 +111,11 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
         <div className="dashboard-connection-group">
           <h3>Online connections</h3>
           <div className="dashboard-grid">
-            {onlineConnections.map((connection) => (
+            {onlineConnections.map((connection, index) => {
+              const menuKey = `online:${index}`
+              return (
               <BorderGlow
-                key={connection.server_id || connection.name}
+                key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
                 glowColor="270 100% 75%"
@@ -129,17 +131,19 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                         aria-label="Connection options"
                         onClick={() =>
                           setActionsOpenFor((prev) =>
-                            prev === connection.server_id ? null : connection.server_id,
+                            prev === menuKey
+                              ? null
+                              : menuKey,
                           )
                         }
                       >
                         ...
                       </button>
-                      {actionsOpenFor === connection.server_id ? (
+                      {actionsOpenFor === menuKey ? (
                         <div className="connection-menu-dropdown">
                           <button
                             type="button"
-                            disabled={actionLoading === `disconnect:${connection.server_id}`}
+                            disabled={!connection.server_id || actionLoading === `disconnect:${connection.server_id}`}
                             onClick={() => handleAction('disconnect', connection.server_id)}
                           >
                             {actionLoading === `disconnect:${connection.server_id}`
@@ -148,7 +152,7 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                           </button>
                           <button
                             type="button"
-                            disabled={actionLoading === `delete:${connection.server_id}`}
+                            disabled={!connection.server_id || actionLoading === `delete:${connection.server_id}`}
                             onClick={() => handleAction('delete', connection.server_id)}
                           >
                             {actionLoading === `delete:${connection.server_id}`
@@ -179,16 +183,19 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                   </button>
                 </div>
               </BorderGlow>
-            ))}
+              )
+            })}
           </div>
         </div>
 
         <div className="dashboard-connection-group">
           <h3>Disconnected connections</h3>
           <div className="dashboard-grid">
-            {disconnectedConnections.map((connection) => (
+            {disconnectedConnections.map((connection, index) => {
+              const menuKey = `disconnected:${index}`
+              return (
               <BorderGlow
-                key={connection.server_id || connection.name}
+                key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
                 glowColor="270 100% 75%"
@@ -204,17 +211,19 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                         aria-label="Connection options"
                         onClick={() =>
                           setActionsOpenFor((prev) =>
-                            prev === connection.server_id ? null : connection.server_id,
+                            prev === menuKey
+                              ? null
+                              : menuKey,
                           )
                         }
                       >
                         ...
                       </button>
-                      {actionsOpenFor === connection.server_id ? (
+                      {actionsOpenFor === menuKey ? (
                         <div className="connection-menu-dropdown">
                           <button
                             type="button"
-                            disabled={actionLoading === `connect:${connection.server_id}`}
+                            disabled={!connection.server_id || actionLoading === `connect:${connection.server_id}`}
                             onClick={() => handleAction('connect', connection.server_id)}
                           >
                             {actionLoading === `connect:${connection.server_id}`
@@ -223,7 +232,7 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                           </button>
                           <button
                             type="button"
-                            disabled={actionLoading === `delete:${connection.server_id}`}
+                            disabled={!connection.server_id || actionLoading === `delete:${connection.server_id}`}
                             onClick={() => handleAction('delete', connection.server_id)}
                           >
                             {actionLoading === `delete:${connection.server_id}`
@@ -254,7 +263,8 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                   </button>
                 </div>
               </BorderGlow>
-            ))}
+              )
+            })}
           </div>
         </div>
       </section>

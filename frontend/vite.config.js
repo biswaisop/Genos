@@ -7,7 +7,7 @@ export default defineConfig({
   server: {
     proxy: {
       '/api': {
-        target: 'http://localhost:8000',
+        target: 'https://doorman-stencil-dime.ngrok-free.dev',
         changeOrigin: true,
         ws: true,
       },
