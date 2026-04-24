@@ -16,13 +16,13 @@ client = hvac.Client(
 
 def store_ssh_key(hostname: str, username: str) -> str:
     """
-    Generates an Ed25519 SSH key pair for a server identified by hostname@username.
+    Generates an RSA SSH key pair for a server identified by hostname@username.
 
     Steps:
     1. Generate the public/private key pair in memory.
     2. Write both keys to a temporary directory named `hostname@username` for any
        intermediate use (e.g. SCP, Ansible). The directory is cleaned up after Vault storage.
-    3. Store ONLY the private key in HashiCorp Vault at path:
+    3. Store BOTH the private and public keys in HashiCorp Vault at path:
            ssh-keys/<hostname>@<username>
     4. Return the public key string so the caller can hand it to the user.
 
@@ -33,7 +33,9 @@ def store_ssh_key(hostname: str, username: str) -> str:
     Returns:
         The OpenSSH-formatted public key string.
     """
-    private_key, public_key = generate_keypair()
+    # Use username@hostname as the comment for the public key
+    comment = f"{username}@{hostname}"
+    private_key, public_key = generate_keypair(comment=comment)
 
     # Temporary directory named hostname@username as specified
     dir_name = f"{hostname}@{username}"
@@ -41,13 +43,13 @@ def store_ssh_key(hostname: str, username: str) -> str:
     os.makedirs(temp_dir, exist_ok=True)
 
     try:
-        # Write both keys to temp dir
-        with open(os.path.join(temp_dir, "id_ed25519"), "w") as f:
+        # Write both keys to temp dir using standard filenames
+        with open(os.path.join(temp_dir, "id_rsa"), "w") as f:
             f.write(private_key)
-        with open(os.path.join(temp_dir, "id_ed25519.pub"), "w") as f:
+        with open(os.path.join(temp_dir, "id_rsa.pub"), "w") as f:
             f.write(public_key)
 
-        # Store private key in Vault KV v2 — public key is safe to store too for reference
+        # Store keys in Vault KV v2
         vault_path = f"ssh-keys/{dir_name}"
         client.secrets.kv.v2.create_or_update_secret(
             path=vault_path,

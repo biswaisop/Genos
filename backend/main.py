@@ -7,6 +7,7 @@ import uvicorn
 from core.db import create_indexes
 from routes.user.user import UserRouter
 from routes.server.servers import ServerRouter
+from routes.agents.agents import router as AgentsRouter
 
 
 @asynccontextmanager
@@ -44,6 +45,7 @@ app.add_middleware(
 
 app.include_router(UserRouter, prefix="/api/v1/users", tags=["Users & Authentication"])
 app.include_router(ServerRouter, prefix="/api/v1/servers", tags=["Servers (BYOS)"])
+app.include_router(AgentsRouter, prefix="/api/v1/agents", tags=["Agents"])
 
 
 @app.get("/")

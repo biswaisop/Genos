@@ -1,20 +1,22 @@
-from cryptography.hazmat.primitives.asymmetric import ed25519
+from cryptography.hazmat.primitives.asymmetric import rsa
 from cryptography.hazmat.primitives import serialization
 
-def generate_keypair():
-    private_key = ed25519.Ed25519PrivateKey.generate()
+def generate_keypair(comment: str = "genos-key") -> tuple[str, str]:
+    private_key = rsa.generate_private_key(
+        public_exponent=65537,
+        key_size=4096,
+    )
 
     private_bytes = private_key.private_bytes(
         encoding=serialization.Encoding.PEM,
         format=serialization.PrivateFormat.OpenSSH,
-        encryption_algorithm=serialization.NoEncryption()  # or BestAvailableEncryption(b'passphrase')
+        encryption_algorithm=serialization.NoEncryption()
     )
 
-    public_key = private_key.public_key().public_bytes(
+    public_key_bytes = private_key.public_key().public_bytes(
         encoding=serialization.Encoding.OpenSSH,
         format=serialization.PublicFormat.OpenSSH
     )
 
-    return private_bytes.decode(), public_key.decode()
-
-    
+    public_key = f"{public_key_bytes.decode().strip()} {comment}"
+    return private_bytes.decode(), public_key
