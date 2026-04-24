@@ -953,7 +953,7 @@ main {
   border-radius: 8px;
   background: color-mix(in srgb, var(--bg) 94%, transparent);
   padding: 6px;
-  z-index: 3;
+  z-index: 20;
 }
 
 .connection-menu-dropdown button {
