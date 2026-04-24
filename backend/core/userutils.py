@@ -31,3 +31,14 @@ async def getuserbyid(id: str) -> UserInDB | None:
         user_data["_id"] = str(user_data["_id"])
         return UserInDB(**user_data)
     return None
+
+async def updateuser(id: str, update_data: dict) -> bool:
+    """Updates user fields in the DB securely."""
+    if not update_data:
+        return False
+        
+    result = await users_collection.update_one(
+        {"_id": ObjectId(id)},
+        {"$set": update_data}
+    )
+    return result.modified_count > 0

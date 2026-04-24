@@ -8,6 +8,7 @@ from schema.user import (
     SignUp,
     LoginRequest,
     TokenResponse,
+    UpdateUserRequest,
     # API response
     UserProfile,
     # backwards-compat aliases
@@ -61,7 +62,7 @@ from schema.agents import (
 __all__ = [
     # user
     "UserInDB", "SubscriptionInfo", "UsageInfo", "UserSettings",
-    "SignUp", "LoginRequest", "TokenResponse", "UserProfile",
+    "SignUp", "LoginRequest", "TokenResponse", "UpdateUserRequest", "UserProfile",
     "userInDB", "loginRequest", "tokenResponse",
     # servers
     "ServerInDB", "CommandInDB", "SessionInDB",

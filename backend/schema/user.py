@@ -58,6 +58,13 @@ class SignUp(BaseModel):
     phone: Optional[str] = None
 
 
+class UpdateUserRequest(BaseModel):
+    """PATCH /api/v1/users/me"""
+    name: Optional[str] = None
+    phone: Optional[str] = None
+    settings: Optional[UserSettings] = None
+
+
 class LoginRequest(BaseModel):
     """POST /auth/login"""
     email: EmailStr
