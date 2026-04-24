@@ -9,6 +9,9 @@ import AuthPage from './components/auth/AuthPage'
 import DashboardPage from './components/dashboard/DashboardPage'
 import CreateConnectionPage from './components/connections/CreateConnectionPage'
 import ChatPage from './components/chat/ChatPage'
+import NotificationBell from './components/notifications/NotificationBell'
+import TeamsPage from './components/teams/TeamsPage'
+import TeamDetailPage from './components/teams/TeamDetailPage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
@@ -18,11 +21,21 @@ function getRouteFromPath(pathname) {
   if (pathname === '/dashboard') return 'dashboard'
   if (pathname === '/create-connection') return 'create-connection'
   if (pathname === '/chat') return 'chat'
+  if (pathname === '/teams') return 'teams'
+  if (pathname.startsWith('/teams/')) return 'team-detail'
   return 'home'
+}
+
+function getTeamIdFromPath(pathname) {
+  if (!pathname.startsWith('/teams/')) return null
+  const slug = pathname.slice('/teams/'.length)
+  const trimmed = slug.replace(/\/+$/, '')
+  return trimmed || null
 }
 
 function App() {
   const [route, setRoute] = useState(getRouteFromPath(window.location.pathname))
+  const [teamId, setTeamId] = useState(getTeamIdFromPath(window.location.pathname))
   const [currentUser, setCurrentUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
 
@@ -101,14 +114,17 @@ function App() {
 
   useEffect(() => {
     if (!authReady) return
-    if (route !== 'dashboard') return
+    const authGated = ['dashboard', 'teams', 'team-detail']
+    if (!authGated.includes(route)) return
     if (currentUser) return
     navigateTo('/signin')
   }, [authReady, route, currentUser])
 
   useEffect(() => {
     const handlePopState = () => {
-      setRoute(getRouteFromPath(window.location.pathname))
+      const pathname = window.location.pathname
+      setRoute(getRouteFromPath(pathname))
+      setTeamId(getTeamIdFromPath(pathname))
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -120,7 +136,9 @@ function App() {
     if (currentPath !== path) {
       window.history.pushState({}, '', path)
     }
-    setRoute(getRouteFromPath(new URL(path, window.location.origin).pathname))
+    const pathname = new URL(path, window.location.origin).pathname
+    setRoute(getRouteFromPath(pathname))
+    setTeamId(getTeamIdFromPath(pathname))
   }
 
   const authMode = route === 'signin' ? 'signin' : route === 'signup' ? 'signup' : null
@@ -149,11 +167,15 @@ function App() {
         links={route === 'home' ? navLinks : []}
         ctaLabel={
           route === 'dashboard'
-            ? ''
+            ? currentUser
+              ? 'Teams'
+              : ''
             : route === 'create-connection'
             ? ''
             : route === 'chat'
             ? ''
+            : route === 'teams' || route === 'team-detail'
+            ? 'Dashboard'
             : currentUser
               ? 'Dashboard'
               : route === 'home'
@@ -162,9 +184,16 @@ function App() {
         }
         onCtaClick={(event) => {
           event.preventDefault()
-          if (route === 'dashboard') return
+          if (route === 'dashboard') {
+            if (currentUser) navigateTo('/teams')
+            return
+          }
           if (route === 'create-connection') return
           if (route === 'chat') return
+          if (route === 'teams' || route === 'team-detail') {
+            navigateTo('/dashboard')
+            return
+          }
           if (currentUser) {
             navigateTo(route === 'dashboard' ? '/' : '/dashboard')
             return
@@ -180,6 +209,13 @@ function App() {
             navigateTo('/signin')
           }
         }}
+        trailing={
+          currentUser ? (
+            <NotificationBell
+              onOpenTeam={(teamId) => navigateTo(`/teams/${teamId}`)}
+            />
+          ) : null
+        }
       />
 
       {route === 'home' ? (
@@ -275,6 +311,17 @@ function App() {
         <DashboardPage
           onAddConnection={() => navigateTo('/create-connection')}
           onOpenChat={(serverId) => navigateTo(`/chat?serverId=${encodeURIComponent(serverId)}`)}
+        />
+      ) : route === 'teams' && currentUser ? (
+        <TeamsPage
+          onOpenTeam={(id) => navigateTo(`/teams/${id}`)}
+          onBack={() => navigateTo('/dashboard')}
+        />
+      ) : route === 'team-detail' && currentUser && teamId ? (
+        <TeamDetailPage
+          teamId={teamId}
+          currentUser={currentUser}
+          onBack={() => navigateTo('/teams')}
         />
       ) : route === 'create-connection' ? (
         <CreateConnectionPage />

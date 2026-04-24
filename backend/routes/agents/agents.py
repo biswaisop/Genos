@@ -15,6 +15,7 @@ from core.auth import SECRET_KEY, ALGORITHM
 from core.chat_memory import ChatMemoryService
 from core.serverutils import getserverbyid
 from core.userutils import getuserbyemail
+from core.access import has_server_access, resolve_user_role
 from services.vault import get_ssh_key
 
 router = APIRouter()
@@ -93,10 +94,12 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
         await websocket.close(code=4404, reason="Server not found")
         return
 
-    if str(server.owner_id) != str(current_user.id):
+    if not await has_server_access(current_user.id, server):
         await websocket.send_json({"type": "error", "content": "Not authorized for this server."})
         await websocket.close(code=4403, reason="Forbidden")
         return
+
+    user_role = await resolve_user_role(current_user.id, server) or "personal"
 
     hostname = server.connection.host
     username = server.connection.username
@@ -184,6 +187,7 @@ async def agent_websocket(websocket: WebSocket, server_id: str):
                 init_state: State = {
                     "messages":         [HumanMessage(content=message)],
                     "user_id":          str(current_user.id),
+                    "user_role":        user_role,
                     "context":          "",
                     "proposed_command": "",
                     "tool_used":        "",

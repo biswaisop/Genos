@@ -163,6 +163,10 @@ class ServerResponse(BaseModel):
     # Populated only on POST /api/v1/servers — the user must add this to their server's
     # ~/.ssh/authorized_keys before GenOS can connect via SSH.
     public_key: Optional[str] = None
+    # Populated on GET /api/v1/servers/ — lets the frontend render role-specific
+    # affordances. One of: 'personal' | 'owner' | 'admin' | 'operator' | 'viewer'.
+    role: Optional[str] = None
+    team_id: Optional[str] = None
 
     model_config = {"populate_by_name": True}
 

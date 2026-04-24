@@ -1,6 +1,14 @@
 import CtaButton from '../common/CtaButton'
 
-function Navbar({ brand, links, ctaLabel, ctaHref, onCtaClick, onProfileClick }) {
+function Navbar({
+  brand,
+  links,
+  ctaLabel,
+  ctaHref,
+  onCtaClick,
+  onProfileClick,
+  trailing,
+}) {
   return (
     <header className="navbar">
       <a className="navbar__brand" href="/">
@@ -16,6 +24,7 @@ function Navbar({ brand, links, ctaLabel, ctaHref, onCtaClick, onProfileClick })
       </nav>
 
       <div className="navbar__actions">
+        {trailing}
         {ctaLabel ? <CtaButton label={ctaLabel} href={ctaHref} onClick={onCtaClick} /> : null}
         <button
           type="button"

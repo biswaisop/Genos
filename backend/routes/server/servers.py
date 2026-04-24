@@ -6,11 +6,19 @@ import tempfile
 from urllib.parse import unquote
 from datetime import datetime, timezone
 from schema.servers import ServerCreateRequest, ServerResponse, ServerTestResponse
+from schema.metrics import ServerMetricsResponse
 from schema.user import UserInDB
-from core.serverutils import createserver, getserversbyuser, getserverbyid, deleteserverbyid
+from core.serverutils import (
+    createserver,
+    getaccessibleservers,
+    getserverbyid,
+    deleteserverbyid,
+)
 from core.db import servers_collection
 from core.auth import get_current_user
+from core.access import has_server_access, resolve_user_role
 from services.vault import store_ssh_key, get_ssh_key
+from services.poller import fetch_latest_metric, fetch_metrics_history
 from core.sshconnector import run_command_ssh
 from core.session_manager import get_connector, disconnect_user
 
@@ -23,13 +31,13 @@ def normalize_server_id(server_id: str) -> str:
 @ServerRouter.get("/", response_model=List[ServerResponse])
 async def list_servers(current_user: UserInDB = Depends(get_current_user)):
     """
-    List all servers configured by the current user.
+    List all servers the current user can access — their own servers plus any
+    servers shared with them through a team.
     """
-    servers_in_db = await getserversbyuser(current_user.id)
-    # The DB response has the connection nested property, we want to flatten for safe response 
+    servers_in_db = await getaccessibleservers(current_user.id)
     safe_servers = []
     for s in servers_in_db:
-        # Build the safe response
+        role = await resolve_user_role(current_user.id, s)
         safe_server = ServerResponse(
             _id=s.id,
             server_id=s.server_id,
@@ -38,7 +46,9 @@ async def list_servers(current_user: UserInDB = Depends(get_current_user)):
             status=s.connection.status if s.connection else "disconnected",
             os=s.metadata.os,
             last_connected_at=s.connection.last_connected_at if s.connection else None,
-            created_at=s.created_at
+            created_at=s.created_at,
+            role=role,
+            team_id=s.team_id,
         )
         safe_servers.append(safe_server)
     return safe_servers
@@ -92,14 +102,15 @@ async def create_server(req: ServerCreateRequest, current_user: UserInDB = Depen
 async def delete_server(server_id: str, current_user: UserInDB = Depends(get_current_user)):
     """
     Delete a configured server using its unique ID (host@username).
+    Deletion is restricted to the server owner — team members can never delete.
     """
     normalized_server_id = normalize_server_id(server_id)
     server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-        
+
     if str(server.owner_id) != str(current_user.id):
-        raise HTTPException(status_code=403, detail="Not authorized to delete this server")
+        raise HTTPException(status_code=403, detail="Only the server owner can delete this server")
 
     disconnect_user(
         hostname=server.connection.host,
@@ -118,7 +129,7 @@ async def connect_server(server_id: str, current_user: UserInDB = Depends(get_cu
     server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-    if str(server.owner_id) != str(current_user.id):
+    if not await has_server_access(current_user.id, server):
         raise HTTPException(status_code=403, detail="Not authorized to access this server")
 
     host = server.connection.host
@@ -171,7 +182,7 @@ async def disconnect_server(server_id: str, current_user: UserInDB = Depends(get
     server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-    if str(server.owner_id) != str(current_user.id):
+    if not await has_server_access(current_user.id, server):
         raise HTTPException(status_code=403, detail="Not authorized to access this server")
 
     disconnect_user(
@@ -208,12 +219,12 @@ async def test_server_connection(server_id: str, current_user: UserInDB = Depend
     5. Clean up the temporary key file regardless of outcome.
     6. Return the result with latency, remote user, and working directory.
     """
-    # 1. Verify server exists and belongs to the current user
+    # 1. Verify server exists and the user has access (owner or team member)
     normalized_server_id = normalize_server_id(server_id)
     server = await getserverbyid(normalized_server_id)
     if not server:
         raise HTTPException(status_code=404, detail="Server not found")
-    if str(server.owner_id) != str(current_user.id):
+    if not await has_server_access(current_user.id, server):
         raise HTTPException(status_code=403, detail="Not authorized to access this server")
 
     host = server.connection.host
@@ -278,3 +289,64 @@ async def test_server_connection(server_id: str, current_user: UserInDB = Depend
             message=f"SSH connection failed: {error_detail}",
             latency_ms=latency_ms,
         )
+
+
+@ServerRouter.get("/{server_id}/metrics", response_model=ServerMetricsResponse | None)
+async def get_server_metrics(
+    server_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """Return the latest metrics snapshot for this server (or null if none yet)."""
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not await has_server_access(current_user.id, server):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    latest = await fetch_latest_metric(normalized_server_id)
+    if not latest:
+        return None
+    return ServerMetricsResponse(
+        server_id=latest.get("server_id"),
+        polled_at=latest.get("polled_at"),
+        cpu_percent=latest.get("cpu_percent"),
+        memory_percent=latest.get("memory_percent"),
+        disk_percent=latest.get("disk_percent"),
+        load_average=latest.get("load_average"),
+        success=latest.get("success", True),
+        error=latest.get("error"),
+    )
+
+
+@ServerRouter.get(
+    "/{server_id}/metrics/history",
+    response_model=list[ServerMetricsResponse],
+)
+async def get_server_metrics_history(
+    server_id: str,
+    hours: int = 24,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """Return up to the last `hours` hours of metric snapshots (newest first)."""
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not await has_server_access(current_user.id, server):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+
+    docs = await fetch_metrics_history(normalized_server_id, hours=max(1, min(hours, 72)))
+    return [
+        ServerMetricsResponse(
+            server_id=doc.get("server_id"),
+            polled_at=doc.get("polled_at"),
+            cpu_percent=doc.get("cpu_percent"),
+            memory_percent=doc.get("memory_percent"),
+            disk_percent=doc.get("disk_percent"),
+            load_average=doc.get("load_average"),
+            success=doc.get("success", True),
+            error=doc.get("error"),
+        )
+        for doc in docs
+    ]

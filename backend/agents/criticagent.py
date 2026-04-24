@@ -99,6 +99,100 @@ def _fast_path_verdict(command: str) -> dict | None:
     return None
 
 
+# ── Command classifier (for role-based access control) ───────────────────────
+_DESTRUCTIVE_PATTERNS = [
+    re.compile(r"\brm\b"),
+    re.compile(r"\bmkfs\.[a-z0-9]+\b"),
+    re.compile(r"\bdd\s+.*\bof=/"),
+    re.compile(r"\b(shutdown|poweroff|reboot|halt)\b"),
+    re.compile(r"\b(kill|pkill|killall)\b"),
+    re.compile(r"\b(chown|chmod)\b.*(/etc|/boot|/usr|/var|/sys|/proc)"),
+    re.compile(r"\bsystemctl\s+(stop|restart|disable|mask)\b"),
+    re.compile(r"\b(apt|apt-get|yum|dnf)\s+(remove|purge|autoremove)\b"),
+    re.compile(r"\bpip\s+uninstall\b"),
+    re.compile(r"\bdocker\s+(rm|rmi|kill|stop|prune)\b"),
+    re.compile(r"\btruncate\b"),
+    re.compile(r"\b>\s*/dev/sd"),
+]
+
+_WRITE_PATTERNS = [
+    re.compile(r"\b(cp|mv|touch|mkdir|ln|tee)\b"),
+    re.compile(r"\b(echo|printf)\b.*[>|]{1,2}"),
+    re.compile(r"\bsystemctl\s+(start|enable|reload)\b"),
+    re.compile(r"\b(apt|apt-get|yum|dnf)\s+(install|update|upgrade)\b"),
+    re.compile(r"\bpip\s+install\b"),
+    re.compile(r"\bnpm\s+(install|i)\b"),
+    re.compile(r"\b(chown|chmod)\b"),
+    re.compile(r"\bdocker\s+(run|start|pull|build|compose)\b"),
+    re.compile(r"\bgit\s+(push|pull|clone|fetch|merge|reset|checkout)\b"),
+    re.compile(r"[>]{1,2}\s*\S+"),
+]
+
+
+def _classify_command(command: str) -> Literal["read", "write", "destructive"]:
+    """Rough classification used for role enforcement in the critic gate."""
+    if not command:
+        return "read"
+
+    lowered = command.lower()
+
+    for pattern in _DESTRUCTIVE_PATTERNS:
+        if pattern.search(lowered):
+            return "destructive"
+
+    for pattern in _WRITE_PATTERNS:
+        if pattern.search(lowered):
+            return "write"
+
+    # Fall back to shlex-based head check
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        tokens = command.split()
+
+    if tokens:
+        head = tokens[0].lstrip("/").split("/")[-1]
+        if head in _READ_ONLY_BINS:
+            return "read"
+        if head in {"sudo", "env"} and len(tokens) > 1:
+            # re-classify tail when prefixed with sudo/env VAR=val …
+            tail_idx = 1
+            while tail_idx < len(tokens) and "=" in tokens[tail_idx]:
+                tail_idx += 1
+            return _classify_command(" ".join(tokens[tail_idx:]))
+
+    return "write"
+
+
+def _role_gate_verdict(command: str, user_role: str) -> dict | None:
+    """Apply role-based clearance before the fast-path/LLM decides.
+    Returns a BLOCK verdict if the user's role disallows this command class,
+    otherwise returns None so downstream logic runs."""
+    role = (user_role or "personal").lower()
+    if role in {"personal", "owner", "admin"}:
+        return None
+
+    classification = _classify_command(command)
+
+    if role == "viewer" and classification != "read":
+        return {
+            "decision": "BLOCK",
+            "risk_level": "medium",
+            "reason": "viewer role may only run read-only commands",
+            "user_message": "Viewer access: read-only commands only. Ask a team admin for elevated permissions.",
+        }
+
+    if role == "operator" and classification == "destructive":
+        return {
+            "decision": "BLOCK",
+            "risk_level": "high",
+            "reason": "operator role may not run destructive commands",
+            "user_message": "Operator access: destructive commands are not permitted on this server.",
+        }
+
+    return None
+
+
 class SessionMemoryService:
     """Minimal in-memory fallback for pending confirmations."""
 
@@ -168,15 +262,29 @@ def _parse_verdict(raw: str) -> dict:
 
 # ── Public evaluate function (sync, reusable outside LangGraph) ───────────────
 
-def evaluate_command(user_intent: str, proposed_command: str) -> dict:
+def evaluate_command(
+    user_intent: str,
+    proposed_command: str,
+    user_role: str = "personal",
+) -> dict:
     """
     Synchronously evaluate a proposed bash command.
 
     Used by the critic node in graph.py before any command is executed.
+    `user_role` is one of: 'personal' | 'owner' | 'admin' | 'operator' | 'viewer'.
     Returns a verdict dict:
       {decision, risk_level, reason, user_message}
     Fail-safe: any exception → BLOCK.
     """
+    # Role gate — enforce clearance BEFORE the fast-path or LLM runs.
+    gated = _role_gate_verdict(proposed_command, user_role)
+    if gated is not None:
+        logger.info(
+            "critic role-gate BLOCK: role=%s cmd=%s",
+            user_role, proposed_command,
+        )
+        return gated
+
     # Fast path — skip LLM for obvious read-only / obvious block commands.
     fast = _fast_path_verdict(proposed_command)
     if fast is not None:

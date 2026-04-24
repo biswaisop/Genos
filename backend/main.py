@@ -1,23 +1,47 @@
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
+import asyncio
+import logging
+import os
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-import os
 import uvicorn
 
 from core.db import create_indexes
 from routes.user.user import UserRouter
 from routes.server.servers import ServerRouter
 from routes.agents.agents import router as AgentsRouter
+from routes.notifications.notifications import NotificationRouter
+from routes.teams.teams import TeamRouter
+
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """
-    On startup, we ensure all the database indexes are configured.
+    On startup, we ensure all the database indexes are configured and (optionally)
+    spawn the anomaly poller in the background.
     """
     await create_indexes()
-    yield
-    # Shutdown sequence if required later
+
+    poller_task = None
+    if os.getenv("ANOMALY_POLLER_ENABLED", "false").lower() in {"1", "true", "yes"}:
+        try:
+            from services.poller import poll_loop
+            poller_task = asyncio.create_task(poll_loop())
+            logger.info("anomaly poller background task started")
+        except Exception as exc:
+            logger.error("failed to start anomaly poller: %s", exc)
+
+    try:
+        yield
+    finally:
+        if poller_task is not None:
+            poller_task.cancel()
+            with suppress(asyncio.CancelledError):
+                await poller_task
 
 
 app = FastAPI(
@@ -53,6 +77,8 @@ app.add_middleware(
 app.include_router(UserRouter, prefix="/api/v1/users", tags=["Users & Authentication"])
 app.include_router(ServerRouter, prefix="/api/v1/servers", tags=["Servers (BYOS)"])
 app.include_router(AgentsRouter, prefix="/api/v1/agents", tags=["Agents"])
+app.include_router(NotificationRouter, prefix="/api/v1/notifications", tags=["Notifications"])
+app.include_router(TeamRouter, prefix="/api/v1/teams", tags=["Teams"])
 
 
 @app.get("/")

@@ -61,6 +61,7 @@ logger = logging.getLogger(__name__)
 class State(TypedDict):
     messages:         Annotated[list, add_messages]
     user_id:          str
+    user_role:        str    # 'personal' | 'owner' | 'admin' | 'operator' | 'viewer'
     context:          str    # RAG-retrieved past interactions
     proposed_command: str    # bash command from planner
     tool_used:        str    # which generator tool was used
@@ -122,7 +123,8 @@ def critic_node(state: State) -> dict:
             user_intent = str(msg.content)
             break
 
-    verdict  = evaluate_command(user_intent, proposed)
+    user_role = state.get("user_role") or "personal"
+    verdict  = evaluate_command(user_intent, proposed, user_role=user_role)
     decision = verdict.get("decision", "BLOCK").upper()
 
     logger.info(
@@ -313,6 +315,7 @@ async def run(message: str, hostname: str, username: str) -> str:
     init_state: State = {
         "messages":         [HumanMessage(content=message)],
         "user_id":          f"{hostname}@{username}",
+        "user_role":        "personal",
         "context":          "",
         "proposed_command": "",
         "tool_used":        "",
