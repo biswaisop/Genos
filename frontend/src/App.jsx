@@ -9,6 +9,11 @@ import AuthPage from './components/auth/AuthPage'
 import DashboardPage from './components/dashboard/DashboardPage'
 import CreateConnectionPage from './components/connections/CreateConnectionPage'
 import ChatPage from './components/chat/ChatPage'
+import NotificationBell from './components/notifications/NotificationBell'
+import TeamsPage from './components/teams/TeamsPage'
+import TeamDetailPage from './components/teams/TeamDetailPage'
+import ServerDashboardPage from './components/server/ServerDashboardPage'
+import ProfilePage from './components/profile/ProfilePage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
@@ -18,11 +23,36 @@ function getRouteFromPath(pathname) {
   if (pathname === '/dashboard') return 'dashboard'
   if (pathname === '/create-connection') return 'create-connection'
   if (pathname === '/chat') return 'chat'
+  if (pathname === '/teams') return 'teams'
+  if (pathname.startsWith('/teams/')) return 'team-detail'
+  if (pathname.startsWith('/server/')) return 'server'
+  if (pathname === '/profile') return 'profile'
   return 'home'
+}
+
+function getTeamIdFromPath(pathname) {
+  if (!pathname.startsWith('/teams/')) return null
+  const slug = pathname.slice('/teams/'.length)
+  const trimmed = slug.replace(/\/+$/, '')
+  return trimmed || null
+}
+
+function getServerIdFromPath(pathname) {
+  if (!pathname.startsWith('/server/')) return null
+  const slug = pathname.slice('/server/'.length)
+  const trimmed = slug.replace(/\/+$/, '')
+  if (!trimmed) return null
+  try {
+    return decodeURIComponent(trimmed)
+  } catch {
+    return trimmed
+  }
 }
 
 function App() {
   const [route, setRoute] = useState(getRouteFromPath(window.location.pathname))
+  const [teamId, setTeamId] = useState(getTeamIdFromPath(window.location.pathname))
+  const [serverId, setServerId] = useState(getServerIdFromPath(window.location.pathname))
   const [currentUser, setCurrentUser] = useState(null)
   const [authReady, setAuthReady] = useState(false)
 
@@ -101,14 +131,18 @@ function App() {
 
   useEffect(() => {
     if (!authReady) return
-    if (route !== 'dashboard') return
+    const authGated = ['dashboard', 'teams', 'team-detail', 'server', 'profile']
+    if (!authGated.includes(route)) return
     if (currentUser) return
     navigateTo('/signin')
   }, [authReady, route, currentUser])
 
   useEffect(() => {
     const handlePopState = () => {
-      setRoute(getRouteFromPath(window.location.pathname))
+      const pathname = window.location.pathname
+      setRoute(getRouteFromPath(pathname))
+      setTeamId(getTeamIdFromPath(pathname))
+      setServerId(getServerIdFromPath(pathname))
     }
 
     window.addEventListener('popstate', handlePopState)
@@ -120,7 +154,10 @@ function App() {
     if (currentPath !== path) {
       window.history.pushState({}, '', path)
     }
-    setRoute(getRouteFromPath(new URL(path, window.location.origin).pathname))
+    const pathname = new URL(path, window.location.origin).pathname
+    setRoute(getRouteFromPath(pathname))
+    setTeamId(getTeamIdFromPath(pathname))
+    setServerId(getServerIdFromPath(pathname))
   }
 
   const authMode = route === 'signin' ? 'signin' : route === 'signup' ? 'signup' : null
@@ -149,11 +186,19 @@ function App() {
         links={route === 'home' ? navLinks : []}
         ctaLabel={
           route === 'dashboard'
-            ? ''
+            ? currentUser
+              ? 'Teams'
+              : ''
             : route === 'create-connection'
             ? ''
             : route === 'chat'
             ? ''
+            : route === 'server'
+            ? 'Dashboard'
+            : route === 'profile'
+            ? 'Dashboard'
+            : route === 'teams' || route === 'team-detail'
+            ? 'Dashboard'
             : currentUser
               ? 'Dashboard'
               : route === 'home'
@@ -162,9 +207,24 @@ function App() {
         }
         onCtaClick={(event) => {
           event.preventDefault()
-          if (route === 'dashboard') return
+          if (route === 'dashboard') {
+            if (currentUser) navigateTo('/teams')
+            return
+          }
           if (route === 'create-connection') return
           if (route === 'chat') return
+          if (route === 'server') {
+            navigateTo('/dashboard')
+            return
+          }
+          if (route === 'profile') {
+            navigateTo('/dashboard')
+            return
+          }
+          if (route === 'teams' || route === 'team-detail') {
+            navigateTo('/dashboard')
+            return
+          }
           if (currentUser) {
             navigateTo(route === 'dashboard' ? '/' : '/dashboard')
             return
@@ -176,10 +236,19 @@ function App() {
           navigateTo('/')
         }}
         onProfileClick={() => {
-          if (route === 'home' && !currentUser) {
+          if (currentUser) {
+            navigateTo('/profile')
+          } else {
             navigateTo('/signin')
           }
         }}
+        trailing={
+          currentUser ? (
+            <NotificationBell
+              onOpenTeam={(teamId) => navigateTo(`/teams/${teamId}`)}
+            />
+          ) : null
+        }
       />
 
       {route === 'home' ? (
@@ -211,15 +280,15 @@ function App() {
             <p>Workflow architecture preview</p>
           </div>
           <div className="step-grid">
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>1. Ingest request</h3>
               <p>Accept user or API input with context, priorities, and guardrails.</p>
             </BorderGlow>
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>2. Orchestrate agents</h3>
               <p>Route tasks through the agent registry and trigger required tools per step.</p>
             </BorderGlow>
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>3. Deliver output</h3>
               <p>Store results, emit traces, and return actionable outputs for review.</p>
             </BorderGlow>
@@ -237,7 +306,7 @@ function App() {
                 key={capability.title}
                 as="article"
                 className="info-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <h3>{capability.title}</h3>
                 <p>{capability.description}</p>
@@ -257,7 +326,7 @@ function App() {
                 key={useCase.title}
                 as="article"
                 className="info-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <h3>{useCase.title}</h3>
                 <p>{useCase.description}</p>
@@ -274,7 +343,37 @@ function App() {
       ) : route === 'dashboard' && currentUser ? (
         <DashboardPage
           onAddConnection={() => navigateTo('/create-connection')}
-          onOpenChat={(serverId) => navigateTo(`/chat?serverId=${encodeURIComponent(serverId)}`)}
+          onOpenServer={(id) => navigateTo(`/server/${encodeURIComponent(id)}`)}
+        />
+      ) : route === 'teams' && currentUser ? (
+        <TeamsPage
+          onOpenTeam={(id) => navigateTo(`/teams/${id}`)}
+          onBack={() => navigateTo('/dashboard')}
+        />
+      ) : route === 'team-detail' && currentUser && teamId ? (
+        <TeamDetailPage
+          teamId={teamId}
+          currentUser={currentUser}
+          onBack={() => navigateTo('/teams')}
+        />
+      ) : route === 'server' && currentUser && serverId ? (
+        <ServerDashboardPage
+          serverId={serverId}
+          onOpenChat={(id) =>
+            navigateTo(`/chat?serverId=${encodeURIComponent(id)}`)
+          }
+          onBack={() => navigateTo('/dashboard')}
+        />
+      ) : route === 'profile' && currentUser ? (
+        <ProfilePage
+          currentUser={currentUser}
+          onProfileUpdated={(updated) => setCurrentUser(updated)}
+          onSignOut={() => {
+            localStorage.removeItem('genos_access_token')
+            setCurrentUser(null)
+            navigateTo('/')
+          }}
+          onBack={() => navigateTo('/dashboard')}
         />
       ) : route === 'create-connection' ? (
         <CreateConnectionPage />

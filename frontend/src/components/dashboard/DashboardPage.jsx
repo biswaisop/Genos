@@ -1,13 +1,22 @@
 import { useEffect, useMemo, useState } from 'react'
 import BorderGlow from '../common/BorderGlow'
-import { connectServer, deleteServer, disconnectServer, listServers } from '../../lib/serverApi'
+import {
+  connectServer,
+  deleteServer,
+  disconnectServer,
+  getServerMetrics,
+  listServers,
+} from '../../lib/serverApi'
+import { refreshServerMetrics } from '../../lib/metricsApi'
+import ServerMetricsBadge from './ServerMetricsBadge'
 
-function DashboardPage({ onAddConnection, onOpenChat }) {
+function DashboardPage({ onAddConnection, onOpenServer }) {
   const [actionsOpenFor, setActionsOpenFor] = useState(null)
   const [connections, setConnections] = useState([])
   const [loading, setLoading] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [actionLoading, setActionLoading] = useState('')
+  const [metricsByServer, setMetricsByServer] = useState({})
   const token = localStorage.getItem('genos_access_token')
 
   const onlineConnections = useMemo(
@@ -19,7 +28,7 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
     [connections],
   )
 
-  async function refreshConnections() {
+  async function refreshConnections({ forcePoll = false } = {}) {
     if (!token) {
       setFeedback('Please sign in to view connections.')
       return
@@ -27,8 +36,29 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
     try {
       setLoading(true)
       const data = await listServers(token)
-      setConnections(Array.isArray(data) ? data : [])
+      const list = Array.isArray(data) ? data : []
+      setConnections(list)
       setFeedback('')
+
+      const connected = list.filter((server) => server.status === 'connected' && server.server_id)
+
+      if (forcePoll && connected.length > 0) {
+        await Promise.allSettled(
+          connected.map((server) => refreshServerMetrics(token, server.server_id)),
+        )
+      }
+
+      const pairs = await Promise.all(
+        connected.map(async (server) => {
+          try {
+            const metrics = await getServerMetrics(token, server.server_id)
+            return [server.server_id, metrics]
+          } catch {
+            return [server.server_id, null]
+          }
+        }),
+      )
+      setMetricsByServer(Object.fromEntries(pairs))
     } catch (error) {
       setFeedback(error.message || 'Could not load connections.')
     } finally {
@@ -80,15 +110,15 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
       </section>
 
       <section className="dashboard-stats" aria-label="Connection summary">
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Total connections</h2>
           <p>{connections.length}</p>
         </BorderGlow>
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Online</h2>
           <p>{onlineConnections.length}</p>
         </BorderGlow>
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Disconnected</h2>
           <p>{disconnectedConnections.length}</p>
         </BorderGlow>
@@ -98,7 +128,12 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
         <div className="dashboard-connections__heading">
           <h2>Existing connections</h2>
           <div className="dashboard-connections-actions">
-            <button type="button" className="dashboard-add-btn" onClick={refreshConnections}>
+            <button
+              type="button"
+              className="dashboard-add-btn"
+              onClick={() => refreshConnections({ forcePoll: true })}
+              disabled={loading}
+            >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
             <button type="button" className="dashboard-add-btn" onClick={onAddConnection}>
@@ -118,12 +153,20 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                 key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <div className="dashboard-connection-top">
-                  <h3>{connection.name || connection.server_id}</h3>
+                  <div className="dashboard-connection-top-left">
+                    <h3>{connection.name || connection.server_id}</h3>
+                    <ServerMetricsBadge metrics={metricsByServer[connection.server_id]} />
+                  </div>
                   <div className="connection-top-right">
                     <span className="connection-status ok">Online</span>
+                    {connection.role && connection.role !== 'personal' ? (
+                      <span className={`team-role-pill team-role-pill--${connection.role}`}>
+                        {connection.role}
+                      </span>
+                    ) : null}
                     <div className="connection-actions-menu">
                       <button
                         type="button"
@@ -177,9 +220,9 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     type="button"
                     className="recent-commands-btn"
                     disabled={!connection.server_id}
-                    onClick={() => onOpenChat(connection.server_id)}
+                    onClick={() => onOpenServer && onOpenServer(connection.server_id)}
                   >
-                    Open chat
+                    Open server
                   </button>
                 </div>
               </BorderGlow>
@@ -198,12 +241,19 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                 key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <div className="dashboard-connection-top">
-                  <h3>{connection.name || connection.server_id}</h3>
+                  <div className="dashboard-connection-top-left">
+                    <h3>{connection.name || connection.server_id}</h3>
+                  </div>
                   <div className="connection-top-right">
                     <span className="connection-status warn">Disconnected</span>
+                    {connection.role && connection.role !== 'personal' ? (
+                      <span className={`team-role-pill team-role-pill--${connection.role}`}>
+                        {connection.role}
+                      </span>
+                    ) : null}
                     <div className="connection-actions-menu">
                       <button
                         type="button"
@@ -257,9 +307,9 @@ function DashboardPage({ onAddConnection, onOpenChat }) {
                     type="button"
                     className="recent-commands-btn"
                     disabled={!connection.server_id}
-                    onClick={() => onOpenChat(connection.server_id)}
+                    onClick={() => onOpenServer && onOpenServer(connection.server_id)}
                   >
-                    Open chat
+                    Open server
                   </button>
                 </div>
               </BorderGlow>

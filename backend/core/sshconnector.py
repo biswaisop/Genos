@@ -2,6 +2,7 @@ import paramiko
 import os
 import time
 import threading
+import uuid
 from typing import Optional
 import re
 
@@ -111,16 +112,26 @@ class PersistentSSHConnector:
         
     
     def _exec_with_sentinel(self, command: str, timeout: int) -> str:
+        """
+        Send the command bracketed by a unique start sentinel and the
+        instance end sentinel, then keep only the bytes that arrive strictly
+        between them. This discards bash's readline echo, line-redraws, and
+        any prompt noise without relying on per-line heuristics.
+        """
         self._drain(timeout=0.2)
-        full_cmd = f"{command} ; echo '{self._sentinel}'\n"
+        start_marker = f"GENOS_BEGIN_{uuid.uuid4().hex[:12]}"
+        end_marker = self._sentinel
+        full_cmd = f"echo '{start_marker}' ; {command} ; echo '{end_marker}'\n"
         self._channel.send(full_cmd)
-        
+
         output = ""
-        start  = time.time()
+        started = False
+        body = ""
+        t0 = time.time()
 
         while True:
-            if time.time() - start > timeout:
-                return self._clean_output(output, command)
+            if time.time() - t0 > timeout:
+                return self._clean_output(body if started else "", command)
 
             if self._channel.recv_ready():
                 chunk = self._channel.recv(4096).decode(
@@ -128,13 +139,25 @@ class PersistentSSHConnector:
                 )
                 output += chunk
 
-                if self._sentinel in output:
-                    output = output.split(self._sentinel)[0]
-                    return self._clean_output(output, command)
+                if not started:
+                    idx = output.find(start_marker)
+                    if idx >= 0:
+                        nl = output.find("\n", idx + len(start_marker))
+                        if nl >= 0:
+                            body = output[nl + 1:]
+                            started = True
+                else:
+                    after = output.find(start_marker) + len(start_marker)
+                    body = output[after:]
+                    nl = body.find("\n")
+                    if nl >= 0:
+                        body = body[nl + 1:]
+
+                if started and end_marker in body:
+                    body = body.split(end_marker, 1)[0]
+                    return self._clean_output(body, command)
             else:
                 time.sleep(0.05)
-
-        # return self._clean_output(output, command)
     
     def _raw_exec(self, command: str):
         """
@@ -155,20 +178,17 @@ class PersistentSSHConnector:
                 time.sleep(0.05)
                 
     def _clean_output(self, raw: str, command: str, sentinel: str = "") -> str:
-        # Remove ANSI escape sequences
         ansi = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
         cleaned = ansi.sub("", raw)
 
-        # Remove sentinel if it leaked through
+        # Normalize line endings and drop lone carriage returns so terminal
+        # line-redraws never hide content inside what split("\n") sees.
+        cleaned = cleaned.replace("\r\n", "\n").replace("\r", "")
+
         if sentinel:
             cleaned = cleaned.replace(sentinel, "")
 
-        # Remove the echoed command line
-        lines = cleaned.split("\n")
-        # Keep only lines that are not the command, not the sentinel, and not empty strings.
-        lines = [l for l in lines if l.strip() not in (command.strip(), sentinel) and l.strip() != ""]
-
-        # Remove blank lines at start and end
+        lines = [l for l in cleaned.split("\n") if l.strip()]
         result = "\n".join(lines).strip()
 
         if len(result) > 2500:

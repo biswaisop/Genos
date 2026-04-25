@@ -266,7 +266,7 @@ function ChatPage() {
       </section>
 
       <section className="chat-layout">
-        <BorderGlow as="section" className="chat-panel chat-panel--trace" glowColor="270 100% 75%">
+        <BorderGlow as="section" className="chat-panel chat-panel--trace" glowColor="48 100% 54%">
           <h2>Execution Trace</h2>
           <div className="chat-trace-messages">
             {traceMessages.length === 0 ? <p className="chat-muted">Thinking will appear here.</p> : null}
@@ -279,7 +279,7 @@ function ChatPage() {
           </div>
         </BorderGlow>
 
-        <BorderGlow as="section" className="chat-panel" glowColor="270 100% 75%">
+        <BorderGlow as="section" className="chat-panel" glowColor="48 100% 54%">
           <div className="chat-messages">
             {messages.length === 0 ? (
               <p className="chat-muted">No messages yet. Type a command below to get started.</p>

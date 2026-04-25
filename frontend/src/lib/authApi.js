@@ -48,4 +48,14 @@ export function getMe(token) {
   })
 }
 
+export function updateMe(token, payload) {
+  return request('/api/v1/users/me', {
+    method: 'PATCH',
+    headers: {
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify(payload),
+  })
+}
+
 export { API_BASE_URL }

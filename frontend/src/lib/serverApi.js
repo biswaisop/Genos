@@ -66,3 +66,16 @@ export function deleteServer(token, serverId) {
   const normalizedServerId = normalizeServerId(serverId)
   return request(`/api/v1/servers/${normalizedServerId}`, token, { method: 'DELETE' })
 }
+
+export function getServerMetrics(token, serverId) {
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${normalizedServerId}/metrics`, token)
+}
+
+export function getServerMetricsHistory(token, serverId, hours = 24) {
+  const normalizedServerId = normalizeServerId(serverId)
+  return request(
+    `/api/v1/servers/${normalizedServerId}/metrics/history?hours=${hours}`,
+    token,
+  )
+}
