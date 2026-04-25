@@ -4,7 +4,7 @@ import './BorderGlow.css'
 function BorderGlow({
   as: Component = 'div',
   className = '',
-  glowColor = '270 100% 75%',
+  glowColor = '48 100% 54%',
   borderRadius = 12,
   children,
   ...rest

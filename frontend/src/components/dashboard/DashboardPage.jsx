@@ -7,6 +7,7 @@ import {
   getServerMetrics,
   listServers,
 } from '../../lib/serverApi'
+import { refreshServerMetrics } from '../../lib/metricsApi'
 import ServerMetricsBadge from './ServerMetricsBadge'
 
 function DashboardPage({ onAddConnection, onOpenServer }) {
@@ -27,7 +28,7 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
     [connections],
   )
 
-  async function refreshConnections() {
+  async function refreshConnections({ forcePoll = false } = {}) {
     if (!token) {
       setFeedback('Please sign in to view connections.')
       return
@@ -40,6 +41,13 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
       setFeedback('')
 
       const connected = list.filter((server) => server.status === 'connected' && server.server_id)
+
+      if (forcePoll && connected.length > 0) {
+        await Promise.allSettled(
+          connected.map((server) => refreshServerMetrics(token, server.server_id)),
+        )
+      }
+
       const pairs = await Promise.all(
         connected.map(async (server) => {
           try {
@@ -102,15 +110,15 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
       </section>
 
       <section className="dashboard-stats" aria-label="Connection summary">
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Total connections</h2>
           <p>{connections.length}</p>
         </BorderGlow>
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Online</h2>
           <p>{onlineConnections.length}</p>
         </BorderGlow>
-        <BorderGlow as="article" className="dashboard-stat-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="dashboard-stat-card" glowColor="48 100% 54%">
           <h2>Disconnected</h2>
           <p>{disconnectedConnections.length}</p>
         </BorderGlow>
@@ -120,7 +128,12 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
         <div className="dashboard-connections__heading">
           <h2>Existing connections</h2>
           <div className="dashboard-connections-actions">
-            <button type="button" className="dashboard-add-btn" onClick={refreshConnections}>
+            <button
+              type="button"
+              className="dashboard-add-btn"
+              onClick={() => refreshConnections({ forcePoll: true })}
+              disabled={loading}
+            >
               {loading ? 'Refreshing...' : 'Refresh'}
             </button>
             <button type="button" className="dashboard-add-btn" onClick={onAddConnection}>
@@ -140,7 +153,7 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
                 key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <div className="dashboard-connection-top">
                   <div className="dashboard-connection-top-left">
@@ -228,7 +241,7 @@ function DashboardPage({ onAddConnection, onOpenServer }) {
                 key={connection.server_id || `${connection.name || 'unnamed'}:${connection.host || index}`}
                 as="article"
                 className="dashboard-connection-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <div className="dashboard-connection-top">
                   <div className="dashboard-connection-top-left">

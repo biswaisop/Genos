@@ -32,13 +32,13 @@ function MetricCard({ label, value, suffix = '%', sparkline = [], unit, hint }) 
   }, [sparkline])
 
   const strokeColor =
-    tier === 'hot' ? '#ef4444' : tier === 'warm' ? '#facc15' : '#00f5ff'
+    tier === 'hot' ? '#fef08a' : tier === 'warm' ? '#facc15' : '#fafafa'
 
   return (
     <BorderGlow
       as="article"
       className={`metric-card metric-card--${tier}`}
-      glowColor="270 100% 75%"
+      glowColor="48 100% 54%"
     >
       <header className="metric-card__head">
         <span className="metric-card__label">{label}</span>

@@ -187,7 +187,7 @@ async def _evaluate_metric(
 
 # ── Poll implementation ──────────────────────────────────────────────────────
 
-async def _poll_server(server: ServerInDB) -> None:
+async def _poll_server(server: ServerInDB) -> Optional[dict]:
     host = server.connection.host
     username = server.connection.username
     port = server.connection.port
@@ -197,14 +197,21 @@ async def _poll_server(server: ServerInDB) -> None:
         private_key_pem = vault_data.get("private_key")
     except Exception as exc:
         logger.warning("poller: vault miss for %s: %s", server.server_id, exc)
-        await server_metrics_collection.insert_one({
+        fail_doc: dict[str, Any] = {
             "server_id": server.server_id,
             "polled_at": datetime.now(timezone.utc),
             "success": False,
             "error": f"vault: {exc}",
             "raw": {},
-        })
-        return
+        }
+        try:
+            await server_metrics_collection.insert_one(fail_doc)
+        except Exception as insert_exc:
+            logger.error(
+                "poller: failed to persist vault-miss doc for %s: %s",
+                server.server_id, insert_exc,
+            )
+        return fail_doc
 
     try:
         connector = await asyncio.to_thread(
@@ -216,14 +223,21 @@ async def _poll_server(server: ServerInDB) -> None:
         )
     except Exception as exc:
         logger.warning("poller: connector failed for %s: %s", server.server_id, exc)
-        await server_metrics_collection.insert_one({
+        fail_doc = {
             "server_id": server.server_id,
             "polled_at": datetime.now(timezone.utc),
             "success": False,
             "error": f"ssh: {exc}",
             "raw": {},
-        })
-        return
+        }
+        try:
+            await server_metrics_collection.insert_one(fail_doc)
+        except Exception as insert_exc:
+            logger.error(
+                "poller: failed to persist ssh-fail doc for %s: %s",
+                server.server_id, insert_exc,
+            )
+        return fail_doc
 
     commands = [
         ("cpu", "top -bn1 | head -n 5"),
@@ -254,10 +268,22 @@ async def _poll_server(server: ServerInDB) -> None:
         await server_metrics_collection.insert_one(doc)
     except Exception as exc:
         logger.error("poller: failed to persist metrics for %s: %s", server.server_id, exc)
+        return None
 
     await _evaluate_metric(server, "cpu", doc["cpu_percent"])
     await _evaluate_metric(server, "memory", doc["memory_percent"])
     await _evaluate_metric(server, "disk", doc["disk_percent"])
+
+    return doc
+
+
+async def poll_server_now(server: ServerInDB) -> Optional[dict]:
+    """Run a single ad-hoc poll for one server and return the fresh doc.
+
+    Thin public wrapper over ``_poll_server`` for callers (HTTP routes) that
+    want to trigger a one-off poll outside the background loop.
+    """
+    return await _poll_server(server)
 
 
 async def _iter_connected_servers():
@@ -268,6 +294,34 @@ async def _iter_connected_servers():
             yield ServerInDB(**server_data)
         except Exception as exc:
             logger.warning("poller: skipping malformed server doc: %s", exc)
+
+
+async def _seed_breach_state_from_last_metrics() -> None:
+    """Repopulate `_last_breach_state` from the latest successful metric in Mongo.
+
+    Without this, a backend process restart loses in-memory state and the next
+    poll will treat a still-breached server as OK→BREACH again, duplicating
+    ``anomaly_alert`` notifications.
+    """
+    n = 0
+    async for server in _iter_connected_servers():
+        doc = await fetch_latest_metric(server.server_id)
+        if not doc or not doc.get("success", True):
+            continue
+        sid = server.server_id
+        for metric_name, field in (
+            ("cpu", "cpu_percent"),
+            ("memory", "memory_percent"),
+            ("disk", "disk_percent"),
+        ):
+            v = doc.get(field)
+            if v is None:
+                continue
+            if v >= _threshold_for(metric_name):
+                _last_breach_state[(sid, metric_name)] = True
+                n += 1
+    if n:
+        logger.info("anomaly poller: seeded %d breach key(s) from last metrics", n)
 
 
 async def poll_once() -> int:
@@ -290,6 +344,10 @@ async def poll_loop() -> None:
     )
     # Initial stagger so the poller doesn't slam startup.
     await asyncio.sleep(5)
+    try:
+        await _seed_breach_state_from_last_metrics()
+    except Exception as exc:
+        logger.error("anomaly poller: breach state seed failed: %s", exc)
     while True:
         started = datetime.now(timezone.utc)
         try:

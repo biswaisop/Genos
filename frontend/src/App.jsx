@@ -13,6 +13,7 @@ import NotificationBell from './components/notifications/NotificationBell'
 import TeamsPage from './components/teams/TeamsPage'
 import TeamDetailPage from './components/teams/TeamDetailPage'
 import ServerDashboardPage from './components/server/ServerDashboardPage'
+import ProfilePage from './components/profile/ProfilePage'
 import { getMe } from './lib/authApi'
 import './App.css'
 
@@ -25,6 +26,7 @@ function getRouteFromPath(pathname) {
   if (pathname === '/teams') return 'teams'
   if (pathname.startsWith('/teams/')) return 'team-detail'
   if (pathname.startsWith('/server/')) return 'server'
+  if (pathname === '/profile') return 'profile'
   return 'home'
 }
 
@@ -129,7 +131,7 @@ function App() {
 
   useEffect(() => {
     if (!authReady) return
-    const authGated = ['dashboard', 'teams', 'team-detail', 'server']
+    const authGated = ['dashboard', 'teams', 'team-detail', 'server', 'profile']
     if (!authGated.includes(route)) return
     if (currentUser) return
     navigateTo('/signin')
@@ -193,6 +195,8 @@ function App() {
             ? ''
             : route === 'server'
             ? 'Dashboard'
+            : route === 'profile'
+            ? 'Dashboard'
             : route === 'teams' || route === 'team-detail'
             ? 'Dashboard'
             : currentUser
@@ -213,6 +217,10 @@ function App() {
             navigateTo('/dashboard')
             return
           }
+          if (route === 'profile') {
+            navigateTo('/dashboard')
+            return
+          }
           if (route === 'teams' || route === 'team-detail') {
             navigateTo('/dashboard')
             return
@@ -228,7 +236,9 @@ function App() {
           navigateTo('/')
         }}
         onProfileClick={() => {
-          if (route === 'home' && !currentUser) {
+          if (currentUser) {
+            navigateTo('/profile')
+          } else {
             navigateTo('/signin')
           }
         }}
@@ -270,15 +280,15 @@ function App() {
             <p>Workflow architecture preview</p>
           </div>
           <div className="step-grid">
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>1. Ingest request</h3>
               <p>Accept user or API input with context, priorities, and guardrails.</p>
             </BorderGlow>
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>2. Orchestrate agents</h3>
               <p>Route tasks through the agent registry and trigger required tools per step.</p>
             </BorderGlow>
-            <BorderGlow as="article" className="step-card" glowColor="270 100% 75%">
+            <BorderGlow as="article" className="step-card" glowColor="48 100% 54%">
               <h3>3. Deliver output</h3>
               <p>Store results, emit traces, and return actionable outputs for review.</p>
             </BorderGlow>
@@ -296,7 +306,7 @@ function App() {
                 key={capability.title}
                 as="article"
                 className="info-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <h3>{capability.title}</h3>
                 <p>{capability.description}</p>
@@ -316,7 +326,7 @@ function App() {
                 key={useCase.title}
                 as="article"
                 className="info-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <h3>{useCase.title}</h3>
                 <p>{useCase.description}</p>
@@ -352,6 +362,17 @@ function App() {
           onOpenChat={(id) =>
             navigateTo(`/chat?serverId=${encodeURIComponent(id)}`)
           }
+          onBack={() => navigateTo('/dashboard')}
+        />
+      ) : route === 'profile' && currentUser ? (
+        <ProfilePage
+          currentUser={currentUser}
+          onProfileUpdated={(updated) => setCurrentUser(updated)}
+          onSignOut={() => {
+            localStorage.removeItem('genos_access_token')
+            setCurrentUser(null)
+            navigateTo('/')
+          }}
           onBack={() => navigateTo('/dashboard')}
         />
       ) : route === 'create-connection' ? (

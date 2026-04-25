@@ -22,6 +22,7 @@ from services.poller import (
     fetch_latest_metric,
     fetch_metrics_history,
     fetch_metrics_recent,
+    poll_server_now,
 )
 from core.sshconnector import run_command_ssh
 from core.session_manager import get_connector, disconnect_user
@@ -409,3 +410,58 @@ async def get_server_status(
         last_seen=last_seen,
         host=server.connection.host if server.connection else None,
     )
+
+
+# Minimum age (in seconds) of the latest metric before the refresh endpoint
+# will actually SSH to the VPS again. Keeps spam-clicks cheap.
+_REFRESH_COOLDOWN_SEC = 5
+
+
+def _metric_doc_to_response(doc: dict) -> ServerMetricsResponse:
+    return ServerMetricsResponse(
+        server_id=doc.get("server_id"),
+        polled_at=doc.get("polled_at"),
+        cpu_percent=doc.get("cpu_percent"),
+        memory_percent=doc.get("memory_percent"),
+        disk_percent=doc.get("disk_percent"),
+        load_average=doc.get("load_average"),
+        success=doc.get("success", True),
+        error=doc.get("error"),
+    )
+
+
+@ServerRouter.post(
+    "/{server_id}/metrics/refresh",
+    response_model=ServerMetricsResponse | None,
+)
+async def refresh_server_metrics(
+    server_id: str,
+    current_user: UserInDB = Depends(get_current_user),
+):
+    """Trigger an ad-hoc metric poll for this server and return the fresh doc.
+
+    Short-circuits if the most recent snapshot is younger than the cooldown
+    window to prevent a user from hammering the VPS with refresh clicks.
+    """
+    normalized_server_id = normalize_server_id(server_id)
+    server = await getserverbyid(normalized_server_id)
+    if not server:
+        raise HTTPException(status_code=404, detail="Server not found")
+    if not await has_server_access(current_user.id, server):
+        raise HTTPException(status_code=403, detail="Not authorized to access this server")
+    if (server.connection.status if server.connection else "") != "connected":
+        raise HTTPException(status_code=409, detail="Server is not connected")
+
+    latest = await fetch_latest_metric(normalized_server_id)
+    if latest and latest.get("polled_at"):
+        polled_at = latest["polled_at"]
+        if polled_at.tzinfo is None:
+            polled_at = polled_at.replace(tzinfo=timezone.utc)
+        age = (datetime.now(timezone.utc) - polled_at).total_seconds()
+        if age < _REFRESH_COOLDOWN_SEC:
+            return _metric_doc_to_response(latest)
+
+    doc = await poll_server_now(server)
+    if not doc:
+        return None
+    return _metric_doc_to_response(doc)

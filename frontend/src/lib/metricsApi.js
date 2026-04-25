@@ -57,3 +57,10 @@ export function getServerStatus(token, serverId) {
   const id = normalizeServerId(serverId)
   return request(`/api/v1/servers/${id}/metrics/status`, token)
 }
+
+export function refreshServerMetrics(token, serverId) {
+  const id = normalizeServerId(serverId)
+  return request(`/api/v1/servers/${id}/metrics/refresh`, token, {
+    method: 'POST',
+  })
+}

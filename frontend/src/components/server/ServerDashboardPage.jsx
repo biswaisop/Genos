@@ -6,10 +6,11 @@ import {
   getLatestMetrics,
   getMetricsHistory,
   getServerStatus,
+  refreshServerMetrics,
 } from '../../lib/metricsApi'
 import './ServerDashboardPage.css'
 
-const POLL_INTERVAL_MS = 30000
+const POLL_INTERVAL_MS = 15000
 const WINDOW_SIZE = 20
 
 const THRESHOLDS = { cpu: 85, memory: 85, disk: 85 }
@@ -56,6 +57,8 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
   const [latest, setLatest] = useState(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState('')
+  const [refreshing, setRefreshing] = useState(false)
+  const [refreshError, setRefreshError] = useState('')
 
   const pollTimerRef = useRef(null)
   const mountedRef = useRef(true)
@@ -150,6 +153,40 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
     [history],
   )
 
+  const handleRefreshNow = useCallback(async () => {
+    if (!serverId || !token) return
+    if (refreshing) return
+    setRefreshing(true)
+    setRefreshError('')
+    try {
+      const snapshot = await refreshServerMetrics(token, serverId)
+      if (!mountedRef.current || !snapshot) return
+      const shaped = shapeForChart(snapshot)
+      if (!shaped) return
+      setLatest(snapshot)
+      setHistory((prev) => {
+        const next = [...prev, shaped]
+        if (next.length > WINDOW_SIZE) next.splice(0, next.length - WINDOW_SIZE)
+        return next
+      })
+      try {
+        const s = await getServerStatus(token, serverId)
+        if (mountedRef.current) setStatus(s)
+      } catch {
+        /* non-fatal */
+      }
+    } catch (err) {
+      if (!mountedRef.current) return
+      if (err?.status === 409) {
+        setRefreshError('Server is not connected — reconnect first.')
+      } else {
+        setRefreshError(err?.message || 'Refresh failed.')
+      }
+    } finally {
+      if (mountedRef.current) setRefreshing(false)
+    }
+  }, [serverId, token, refreshing])
+
   const loadAvg = useMemo(() => parseLoadAverage(latest?.load_average), [latest])
   const isOnline = (status?.status || '').toLowerCase() === 'connected'
   const hasData = history.length > 0
@@ -189,20 +226,39 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
         <div>
           <h1 className="server-dashboard__title">{displayName || 'Server'}</h1>
           <p className="server-dashboard__subtitle">
-            Live vitals refresh every 30 seconds.
+            Live vitals refresh every 15 seconds. Click Refresh now to poll immediately.
           </p>
         </div>
-        <button
-          type="button"
-          className="server-dashboard__chat-cta"
-          onClick={() => onOpenChat && onOpenChat(serverId)}
-        >
-          Open Chat →
-        </button>
+        <div className="server-dashboard__title-actions">
+          <button
+            type="button"
+            className="server-dashboard__refresh-btn"
+            onClick={handleRefreshNow}
+            disabled={refreshing || !isOnline}
+            title={
+              isOnline
+                ? 'Force a fresh SSH poll of this server'
+                : 'Server is not connected'
+            }
+          >
+            {refreshing ? 'Refreshing…' : 'Refresh now'}
+          </button>
+          <button
+            type="button"
+            className="server-dashboard__chat-cta"
+            onClick={() => onOpenChat && onOpenChat(serverId)}
+          >
+            Open Chat →
+          </button>
+        </div>
       </div>
 
       {error ? (
         <div className="server-dashboard__error">{error}</div>
+      ) : null}
+
+      {refreshError ? (
+        <div className="server-dashboard__error">{refreshError}</div>
       ) : null}
 
       {!isOnline && !loading ? (
@@ -230,7 +286,7 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
         <BorderGlow
           as="article"
           className="metric-card metric-card--load"
-          glowColor="270 100% 75%"
+          glowColor="48 100% 54%"
         >
           <header className="metric-card__head">
             <span className="metric-card__label">Load Avg</span>
@@ -253,13 +309,13 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
 
       {loading && !hasData ? (
         <section className="server-dashboard__skeletons">
-          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="270 100% 75%" />
-          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="270 100% 75%" />
-          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="270 100% 75%" />
+          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="48 100% 54%" />
+          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="48 100% 54%" />
+          <BorderGlow as="div" className="server-dashboard__skeleton" glowColor="48 100% 54%" />
         </section>
       ) : !hasData ? (
         <section className="server-dashboard__empty">
-          <BorderGlow as="div" className="server-dashboard__empty-card" glowColor="270 100% 75%">
+          <BorderGlow as="div" className="server-dashboard__empty-card" glowColor="48 100% 54%">
             <h3>No data yet</h3>
             <p>
               The anomaly poller hasn't recorded a snapshot for this server yet.
@@ -274,7 +330,7 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
               <h2>CPU Usage</h2>
               <span>last {history.length} polls</span>
             </header>
-            <BorderGlow as="div" className="server-dashboard__chart-panel" glowColor="270 100% 75%">
+            <BorderGlow as="div" className="server-dashboard__chart-panel" glowColor="48 100% 54%">
               <div className="server-dashboard__chart-canvas">
                 <VitalsChart
                   kind="line"
@@ -292,7 +348,7 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
               <h2>Memory Usage</h2>
               <span>last {history.length} polls</span>
             </header>
-            <BorderGlow as="div" className="server-dashboard__chart-panel" glowColor="270 100% 75%">
+            <BorderGlow as="div" className="server-dashboard__chart-panel" glowColor="48 100% 54%">
               <div className="server-dashboard__chart-canvas">
                 <VitalsChart
                   kind="area"
@@ -310,7 +366,7 @@ function ServerDashboardPage({ serverId, onOpenChat, onBack }) {
               <h2>Disk Usage</h2>
               <span>current snapshot</span>
             </header>
-            <BorderGlow as="div" className="server-dashboard__chart-panel server-dashboard__chart-panel--radial" glowColor="270 100% 75%">
+            <BorderGlow as="div" className="server-dashboard__chart-panel server-dashboard__chart-panel--radial" glowColor="48 100% 54%">
               <div className="server-dashboard__chart-canvas server-dashboard__chart-canvas--radial">
                 <VitalsChart kind="radial" value={latest?.disk_percent} />
               </div>

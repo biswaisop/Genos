@@ -121,9 +121,23 @@ function NotificationItem({ notification, onAcceptInvite, onRejectInvite, onDism
       <div className="notification-item__body">
         <div className="notification-item__title">Notification</div>
         <div className="notification-item__meta">
+          {type ? <span className="notification-item__role">{String(type)}</span> : null}
           <span className="notification-item__time">{formatWhen(created_at)}</span>
         </div>
+        {error ? <div className="notification-item__error">{error}</div> : null}
       </div>
+      {onDismiss ? (
+        <div className="notification-item__actions">
+          <button
+            type="button"
+            className="notification-btn notification-btn--reject"
+            disabled={busy}
+            onClick={() => run(onDismiss)}
+          >
+            Dismiss
+          </button>
+        </div>
+      ) : null}
     </div>
   )
 }

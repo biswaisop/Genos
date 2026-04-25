@@ -184,7 +184,7 @@ function TeamDetailPage({ teamId, currentUser, onBack }) {
           <h2>Members</h2>
         </div>
 
-        <BorderGlow as="div" className="team-members-card" glowColor="270 100% 75%">
+        <BorderGlow as="div" className="team-members-card" glowColor="48 100% 54%">
           {team.members.map((member) => (
             <MemberRow
               key={member.user_id}
@@ -235,7 +235,7 @@ function TeamDetailPage({ teamId, currentUser, onBack }) {
                 key={server.server_id}
                 as="article"
                 className="dashboard-connection-card"
-                glowColor="270 100% 75%"
+                glowColor="48 100% 54%"
               >
                 <div className="dashboard-connection-top">
                   <h3>{server.name || server.server_id}</h3>

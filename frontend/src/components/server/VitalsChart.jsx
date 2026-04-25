@@ -4,8 +4,9 @@ import {
   Line,
   AreaChart,
   Area,
-  RadialBarChart,
-  RadialBar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   Tooltip,
@@ -14,35 +15,35 @@ import {
 } from 'recharts'
 
 const PALETTE = {
-  cpu: '#00f5ff',
-  memory: '#c084fc',
-  disk: '#22d3ee',
+  cpu: '#facc15',
+  memory: '#e5e5e5',
+  disk: '#fafafa',
 }
 
 function tooltipStyle() {
   return {
-    background: 'rgba(20, 17, 38, 0.95)',
-    border: '1px solid rgba(192, 132, 252, 0.3)',
+    background: '#0a0a0a',
+    border: '1px solid rgba(250, 204, 21, 0.35)',
     borderRadius: 8,
-    color: '#f3f4f6',
+    color: '#fafafa',
     fontSize: 12,
     padding: '8px 10px',
   }
 }
 
 function gridStroke() {
-  return 'rgba(192, 132, 252, 0.08)'
+  return 'rgba(250, 204, 21, 0.08)'
 }
 
 function axisStyle() {
-  return { stroke: 'rgba(243, 244, 246, 0.35)', fontSize: 11 }
+  return { stroke: 'rgba(250, 250, 250, 0.28)', fontSize: 11 }
 }
 
 function diskColor(percent) {
-  if (typeof percent !== 'number' || Number.isNaN(percent)) return '#9ca3af'
-  if (percent >= 85) return '#ef4444'
+  if (typeof percent !== 'number' || Number.isNaN(percent)) return '#737373'
+  if (percent >= 85) return '#fef08a'
   if (percent >= 70) return '#facc15'
-  return '#22d3ee'
+  return '#fafafa'
 }
 
 function LineKind({ data, dataKey, color, threshold }) {
@@ -63,12 +64,12 @@ function LineKind({ data, dataKey, color, threshold }) {
           contentStyle={tooltipStyle()}
           labelFormatter={(label) => `Time: ${label}`}
           formatter={(value) => [`${Number(value).toFixed(1)}%`, dataKey.toUpperCase()]}
-          cursor={{ stroke: 'rgba(192, 132, 252, 0.35)', strokeWidth: 1 }}
+          cursor={{ stroke: 'rgba(250, 204, 21, 0.35)', strokeWidth: 1 }}
         />
         {typeof threshold === 'number' ? (
           <ReferenceLine
             y={threshold}
-            stroke="#ef4444"
+            stroke="#eab308"
             strokeDasharray="4 4"
             strokeWidth={1}
           />
@@ -113,12 +114,12 @@ function AreaKind({ data, dataKey, color, threshold }) {
           contentStyle={tooltipStyle()}
           labelFormatter={(label) => `Time: ${label}`}
           formatter={(value) => [`${Number(value).toFixed(1)}%`, dataKey.toUpperCase()]}
-          cursor={{ stroke: 'rgba(192, 132, 252, 0.35)', strokeWidth: 1 }}
+          cursor={{ stroke: 'rgba(250, 204, 21, 0.35)', strokeWidth: 1 }}
         />
         {typeof threshold === 'number' ? (
           <ReferenceLine
             y={threshold}
-            stroke="#ef4444"
+            stroke="#eab308"
             strokeDasharray="4 4"
             strokeWidth={1}
           />
@@ -138,30 +139,45 @@ function AreaKind({ data, dataKey, color, threshold }) {
 }
 
 function RadialKind({ value }) {
-  const safe = typeof value === 'number' && !Number.isNaN(value) ? value : 0
-  const data = [{ name: 'used', value: safe, fill: diskColor(safe) }]
+  const hasValue = typeof value === 'number' && !Number.isNaN(value)
+  const used = hasValue ? Math.max(0, Math.min(100, value)) : 0
+  const free = 100 - used
+  const usedFill = diskColor(used)
+  const freeFill = '#1a1a1a'
+
+  const data = [
+    { name: 'Used', value: used },
+    { name: 'Free', value: free },
+  ]
+
   return (
-    <div className="vitals-radial-wrap">
+    <div className="vitals-radial-wrap vitals-disk-donut">
       <ResponsiveContainer width="100%" height="100%">
-        <RadialBarChart
-          innerRadius="70%"
-          outerRadius="100%"
-          data={data}
-          startAngle={90}
-          endAngle={-270}
-        >
-          <RadialBar
-            background={{ fill: 'rgba(192, 132, 252, 0.08)' }}
+        <PieChart margin={{ top: 4, right: 4, bottom: 4, left: 4 }}>
+          <Pie
+            data={data}
             dataKey="value"
-            cornerRadius={10}
+            nameKey="name"
+            cx="50%"
+            cy="50%"
+            innerRadius="58%"
+            outerRadius="88%"
+            startAngle={90}
+            endAngle={-270}
+            stroke="#050505"
+            strokeWidth={3}
+            paddingAngle={0.5}
             isAnimationActive={true}
-            animationDuration={600}
-          />
-        </RadialBarChart>
+            animationDuration={500}
+          >
+            <Cell fill={usedFill} />
+            <Cell fill={freeFill} />
+          </Pie>
+        </PieChart>
       </ResponsiveContainer>
       <div className="vitals-radial-center">
-        <span className="vitals-radial-value">
-          {typeof value === 'number' ? `${value.toFixed(1)}%` : '—'}
+        <span className="vitals-radial-value vitals-radial-value--disk">
+          {hasValue ? `${used.toFixed(1)}%` : '—'}
         </span>
         <span className="vitals-radial-label">Disk used</span>
       </div>

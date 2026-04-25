@@ -116,6 +116,10 @@ function NotificationBell({ token, onOpenTeam }) {
   const handleDismiss = useCallback(
     async (notification) => {
       if (!activeToken) return
+      if (!notification?.id) {
+        setError('Cannot dismiss: missing notification id')
+        return
+      }
       await deleteNotification(activeToken, notification.id)
       await refresh()
     },
@@ -155,7 +159,12 @@ function NotificationBell({ token, onOpenTeam }) {
       </button>
 
       {open ? (
-        <div className="notification-dropdown" role="dialog" aria-label="Notifications">
+        <div
+          className="notification-dropdown"
+          role="dialog"
+          aria-label="Notifications"
+          onMouseDown={(e) => e.stopPropagation()}
+        >
           <div className="notification-dropdown__header">
             <span className="notification-dropdown__title">Notifications</span>
             <button

@@ -29,11 +29,12 @@ async function request(path, token, options = {}) {
 
 export function listNotifications(token, { onlyUnread = false } = {}) {
   const qs = onlyUnread ? '?only_unread=true' : ''
-  return request(`/api/v1/notifications/${qs}`, token)
+  return request(`/api/v1/notifications${qs}`, token)
 }
 
 export function markNotificationRead(token, notificationId) {
-  return request(`/api/v1/notifications/${notificationId}/read`, token, {
+  const id = encodeURIComponent(notificationId)
+  return request(`/api/v1/notifications/${id}/read`, token, {
     method: 'PATCH',
   })
 }
@@ -43,7 +44,8 @@ export function markAllNotificationsRead(token) {
 }
 
 export function deleteNotification(token, notificationId) {
-  return request(`/api/v1/notifications/${notificationId}`, token, {
+  const id = encodeURIComponent(notificationId)
+  return request(`/api/v1/notifications/${id}`, token, {
     method: 'DELETE',
   })
 }

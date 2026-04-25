@@ -2,7 +2,7 @@
   --edge-proximity: 0;
   --cursor-angle: 45deg;
   --border-radius: 12px;
-  --card-bg: color-mix(in srgb, var(--bg) 88%, transparent);
+  --card-bg: color-mix(in srgb, var(--surface, var(--bg)) 92%, var(--bg) 8%);
   position: relative;
   border-radius: var(--border-radius);
   display: block;

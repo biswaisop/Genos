@@ -57,7 +57,7 @@ function TeamsPage({ onOpenTeam, onBack }) {
       </section>
 
       <section className="teams-create">
-        <BorderGlow as="article" className="teams-create-card" glowColor="270 100% 75%">
+        <BorderGlow as="article" className="teams-create-card" glowColor="48 100% 54%">
           <h2>Create a team</h2>
           <form onSubmit={handleCreate} className="teams-create-form">
             <label htmlFor="team-name">Team name</label>
@@ -105,7 +105,7 @@ function TeamsPage({ onOpenTeam, onBack }) {
               key={team.id}
               as="article"
               className="dashboard-connection-card"
-              glowColor="270 100% 75%"
+              glowColor="48 100% 54%"
             >
               <div className="dashboard-connection-top">
                 <h3>{team.name}</h3>
