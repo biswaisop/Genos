@@ -1,71 +1,82 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import BorderGlow from '../common/BorderGlow'
 import { getMe, updateMe } from '../../lib/authApi'
-import './ProfilePage.css'
+import { generateTelegramToken, getTelegramStatus, unlinkTelegram } from '../../lib/telegramApi'
 
 function initialsOf(name) {
   if (!name) return '?'
   const parts = String(name).trim().split(/\s+/)
-  if (parts.length === 0) return '?'
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase()
   return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
 }
 
 function formatDate(iso) {
   if (!iso) return '—'
-  try {
-    return new Date(iso).toLocaleDateString(undefined, {
-      year: 'numeric',
-      month: 'long',
-      day: 'numeric',
-    })
-  } catch {
-    return '—'
-  }
+  try { return new Date(iso).toLocaleDateString(undefined, { year: 'numeric', month: 'long', day: 'numeric' }) }
+  catch { return '—' }
 }
 
 function TierPill({ tier }) {
   const label = (tier || 'free').toString()
+  const cls = label === 'pro'
+    ? 'border-brand-yellow/40 bg-brand-yellow/10 text-brand-yellow'
+    : label === 'team'
+      ? 'border-cyan-400/40 bg-cyan-400/10 text-cyan-300'
+      : 'border-brand-border text-white/40'
   return (
-    <span className={`profile-tier-pill profile-tier-pill--${label}`}>
-      {label.toUpperCase()}
-    </span>
+    <span className={`pill ${cls}`}>{label.toUpperCase()}</span>
   )
 }
 
 function UsageBar({ used, limit }) {
-  const unlimited = limit === -1 || limit === undefined || limit === null
-  const safeUsed = Number.isFinite(used) ? Math.max(0, used) : 0
-  const safeLimit = unlimited ? 0 : Math.max(0, Number(limit) || 0)
-  const pct = unlimited
-    ? 100
-    : safeLimit > 0
-      ? Math.min(100, Math.round((safeUsed / safeLimit) * 100))
-      : 0
+  const unlimited = limit === -1 || limit == null
+  const pct = unlimited ? 100 : limit > 0 ? Math.min(100, Math.round((used / limit) * 100)) : 0
   return (
-    <div className="profile-usage-bar" aria-label="Command usage this month">
+    <div className="w-full h-2 bg-white/5 border border-brand-border rounded-full overflow-hidden">
       <div
-        className="profile-usage-bar__fill"
+        className="h-full bg-gradient-to-r from-brand-yellow to-yellow-300 transition-all duration-500"
         style={{ width: `${pct}%` }}
       />
     </div>
   )
 }
 
-function ProfilePage({ currentUser, onProfileUpdated, onSignOut, onBack }) {
-  const token =
-    typeof window !== 'undefined'
-      ? localStorage.getItem('genos_access_token')
-      : null
+function Card({ label, children }) {
+  return (
+    <section className="glow-card p-6 flex flex-col gap-5 animate-fade-in">
+      <h2 className="text-xs font-semibold tracking-widest uppercase text-white/40">{label}</h2>
+      {children}
+    </section>
+  )
+}
 
-  const [profile, setProfile] = useState(currentUser || null)
-  const [loading, setLoading] = useState(!currentUser)
-  const [error, setError] = useState('')
+function Field({ label, children }) {
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label className="text-xs font-medium tracking-wide uppercase text-white/30">{label}</label>
+      {children}
+    </div>
+  )
+}
+
+export default function ProfilePage({ currentUser, onProfileUpdated, onSignOut, onBack }) {
+  const token = typeof window !== 'undefined' ? localStorage.getItem('genos_access_token') : null
+
+  const [profile, setProfile]       = useState(currentUser || null)
+  const [loading, setLoading]       = useState(!currentUser)
+  const [error, setError]           = useState('')
   const [saveStatus, setSaveStatus] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [nameDraft, setNameDraft] = useState(currentUser?.name || '')
+  const [saving, setSaving]         = useState(false)
+  const [nameDraft, setNameDraft]   = useState(currentUser?.name || '')
   const [phoneDraft, setPhoneDraft] = useState(currentUser?.phone || '')
-  const statusTimerRef = useRef(null)
+  const statusTimer = useRef(null)
+
+  // Telegram state
+  const [tgLinked, setTgLinked]         = useState(false)
+  const [tgUsername, setTgUsername]     = useState(null)
+  const [tgConnecting, setTgConnecting] = useState(false)
+  const [tgUnlinking, setTgUnlinking]   = useState(false)
+  const [tgMessage, setTgMessage]       = useState('')
+  const tgPollRef = useRef(null)
 
   const applyProfile = useCallback((next) => {
     setProfile(next)
@@ -73,68 +84,52 @@ function ProfilePage({ currentUser, onProfileUpdated, onSignOut, onBack }) {
     setPhoneDraft(next?.phone || '')
   }, [])
 
+  // Load profile
   useEffect(() => {
     if (!token) return
     let cancelled = false
-    const load = async () => {
-      try {
-        setLoading(true)
-        setError('')
-        const data = await getMe(token)
-        if (cancelled) return
-        applyProfile(data)
-      } catch (err) {
-        if (cancelled) return
-        setError(err?.message || 'Could not load profile.')
-      } finally {
-        if (!cancelled) setLoading(false)
-      }
-    }
-    load()
-    return () => {
-      cancelled = true
-    }
+    setLoading(true)
+    getMe(token)
+      .then(d => { if (!cancelled) applyProfile(d) })
+      .catch(e => { if (!cancelled) setError(e?.message || 'Could not load profile.') })
+      .finally(() => { if (!cancelled) setLoading(false) })
+    return () => { cancelled = true }
   }, [token, applyProfile])
 
-  useEffect(() => {
-    return () => {
-      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
-    }
+  // Cleanup
+  useEffect(() => () => {
+    if (statusTimer.current) clearTimeout(statusTimer.current)
+    if (tgPollRef.current) clearInterval(tgPollRef.current)
   }, [])
+
+  // Telegram initial status
+  useEffect(() => {
+    if (!token) return
+    getTelegramStatus(token)
+      .then(s => { setTgLinked(s.linked); setTgUsername(s.username) })
+      .catch(() => {})
+  }, [token])
 
   const dirty = useMemo(() => {
     if (!profile) return false
-    const name = (nameDraft || '').trim()
-    const phone = (phoneDraft || '').trim()
-    const currentName = (profile.name || '').trim()
-    const currentPhone = (profile.phone || '').trim()
-    return name !== currentName || phone !== currentPhone
+    return (nameDraft || '').trim() !== (profile.name || '').trim() ||
+           (phoneDraft || '').trim() !== (profile.phone || '').trim()
   }, [profile, nameDraft, phoneDraft])
 
   const handleSave = useCallback(async () => {
     if (!token || !dirty) return
-    const trimmedName = (nameDraft || '').trim()
-    if (!trimmedName) {
-      setError('Name cannot be empty.')
-      return
-    }
-    const payload = { name: trimmedName }
-    const trimmedPhone = (phoneDraft || '').trim()
-    payload.phone = trimmedPhone || null
+    const name = (nameDraft || '').trim()
+    if (!name) { setError('Name cannot be empty.'); return }
     try {
-      setSaving(true)
-      setError('')
-      const updated = await updateMe(token, payload)
+      setSaving(true); setError('')
+      const updated = await updateMe(token, { name, phone: (phoneDraft || '').trim() || null })
       applyProfile(updated)
-      setSaveStatus('Profile saved.')
+      setSaveStatus('Saved!')
       if (onProfileUpdated) onProfileUpdated(updated)
-      if (statusTimerRef.current) clearTimeout(statusTimerRef.current)
-      statusTimerRef.current = setTimeout(() => setSaveStatus(''), 2400)
-    } catch (err) {
-      setError(err?.message || 'Could not save profile.')
-    } finally {
-      setSaving(false)
-    }
+      if (statusTimer.current) clearTimeout(statusTimer.current)
+      statusTimer.current = setTimeout(() => setSaveStatus(''), 2400)
+    } catch (e) { setError(e?.message || 'Could not save.') }
+    finally { setSaving(false) }
   }, [token, dirty, nameDraft, phoneDraft, applyProfile, onProfileUpdated])
 
   const handleCancel = useCallback(() => {
@@ -144,244 +139,254 @@ function ProfilePage({ currentUser, onProfileUpdated, onSignOut, onBack }) {
     setError('')
   }, [profile])
 
-  if (!token) {
-    return (
-      <main className="profile-page">
-        <div className="profile-page__error">Session expired. Please sign in again.</div>
-      </main>
-    )
-  }
+  const handleTgConnect = useCallback(async () => {
+    if (!token || tgConnecting) return
+    setTgConnecting(true); setTgMessage('')
+    try {
+      const { deep_link } = await generateTelegramToken(token)
+      window.open(deep_link, '_blank', 'noopener,noreferrer')
+      setTgMessage('Telegram opened — click START in the bot to complete linking.')
+      let elapsed = 0
+      tgPollRef.current = setInterval(async () => {
+        elapsed += 3
+        try {
+          const s = await getTelegramStatus(token)
+          if (s.linked) {
+            setTgLinked(true); setTgUsername(s.username); setTgMessage('')
+            clearInterval(tgPollRef.current); setTgConnecting(false)
+          }
+        } catch { /* ignore */ }
+        if (elapsed >= 120) { clearInterval(tgPollRef.current); setTgConnecting(false); setTgMessage('Timed out. Try again.') }
+      }, 3000)
+    } catch (e) { setTgMessage(e?.message || 'Failed to start linking.'); setTgConnecting(false) }
+  }, [token, tgConnecting])
 
-  if (loading && !profile) {
-    return (
-      <main className="profile-page">
-        <div className="profile-page__skeletons">
-          <BorderGlow as="div" className="profile-page__skeleton" glowColor="48 100% 54%" />
-          <BorderGlow as="div" className="profile-page__skeleton" glowColor="48 100% 54%" />
-          <BorderGlow as="div" className="profile-page__skeleton" glowColor="48 100% 54%" />
-        </div>
-      </main>
-    )
-  }
+  const handleTgUnlink = useCallback(async () => {
+    if (!token || tgUnlinking) return
+    setTgUnlinking(true); setTgMessage('')
+    try {
+      await unlinkTelegram(token)
+      setTgLinked(false); setTgUsername(null)
+      setTgMessage('Telegram disconnected.')
+      setTimeout(() => setTgMessage(''), 2400)
+    } catch (e) { setTgMessage(e?.message || 'Failed to disconnect.') }
+    finally { setTgUnlinking(false) }
+  }, [token, tgUnlinking])
 
-  if (!profile) {
-    return (
-      <main className="profile-page">
-        <div className="profile-page__error">{error || 'Profile unavailable.'}</div>
-        <button type="button" className="profile-page__back" onClick={() => onBack && onBack()}>
-          ← Back to Dashboard
-        </button>
-      </main>
-    )
-  }
+  if (!token) return (
+    <main className="flex-1 flex items-center justify-center">
+      <p className="text-white/40">Session expired. Please sign in again.</p>
+    </main>
+  )
 
-  const subscription = profile.subscription || {}
-  const usage = profile.usage || {}
-  const settings = profile.settings || {}
-  const unlimited = usage.commands_limit === -1
+  if (loading && !profile) return (
+    <main className="flex-1 max-w-4xl mx-auto w-full px-6 py-10">
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {[1,2,3,4].map(i => (
+          <div key={i} className="h-48 rounded-xl bg-white/5 animate-shimmer" />
+        ))}
+      </div>
+    </main>
+  )
+
+  const subscription = profile?.subscription || {}
+  const usage        = profile?.usage || {}
+  const settings     = profile?.settings || {}
+  const unlimited    = usage.commands_limit === -1
 
   return (
-    <main className="profile-page">
-      <div className="profile-page__topbar">
-        <button
-          type="button"
-          className="profile-page__back"
-          onClick={() => onBack && onBack()}
-        >
-          ← Back to Dashboard
+    <main className="flex-1 max-w-4xl mx-auto w-full px-4 md:px-6 py-8 flex flex-col gap-6">
+
+      {/* Top bar */}
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <button onClick={() => onBack?.()} className="btn-ghost text-sm px-3 py-1.5">
+          ← Dashboard
         </button>
-        <button
-          type="button"
-          className="profile-page__signout"
-          onClick={() => onSignOut && onSignOut()}
-        >
+        <button onClick={() => onSignOut?.()} className="text-sm text-red-400/80 border border-red-500/30
+                                                          px-3 py-1.5 rounded-full hover:bg-red-500/10 transition-colors">
           Sign out
         </button>
       </div>
 
-      <header className="profile-page__header">
-        <div className="profile-avatar" aria-hidden="true">
-          {initialsOf(profile.name)}
+      {/* Avatar + name */}
+      <header className="flex items-center gap-5">
+        <div className="w-16 h-16 rounded-full bg-brand-yellow flex items-center justify-center
+                        text-black font-bold text-2xl font-mono shadow-yellow-glow shrink-0">
+          {initialsOf(profile?.name)}
         </div>
-        <div className="profile-page__identity">
-          <h1 className="profile-page__name">{profile.name || 'Unnamed user'}</h1>
-          <p className="profile-page__email">{profile.email}</p>
+        <div>
+          <h1 className="text-2xl font-bold text-white">{profile?.name || 'Unnamed user'}</h1>
+          <p className="text-white/40 text-sm font-mono">{profile?.email}</p>
         </div>
       </header>
 
-      {error ? <div className="profile-page__error">{error}</div> : null}
+      {error ? (
+        <div className="text-red-400 bg-red-500/10 border border-red-500/30 rounded-lg px-4 py-3 text-sm">
+          {error}
+        </div>
+      ) : null}
 
-      <section className="profile-page__grid">
-        <BorderGlow
-          as="section"
-          className="profile-card"
-          glowColor="48 100% 54%"
-          aria-label="Account details"
-        >
-          <header className="profile-card__head">
-            <h2>Account</h2>
-            {saveStatus ? (
-              <span className="profile-card__status">{saveStatus}</span>
-            ) : null}
-          </header>
+      {/* Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
 
-          <div className="profile-field">
-            <label htmlFor="profile-name">Name</label>
+        {/* Account */}
+        <Card label="Account">
+          <div className="flex items-center justify-between">
+            <span className="text-white/40 text-xs uppercase tracking-widest">Details</span>
+            {saveStatus ? <span className="text-green-400 text-xs">{saveStatus}</span> : null}
+          </div>
+
+          <Field label="Name">
             <input
               id="profile-name"
               type="text"
               value={nameDraft}
-              onChange={(event) => setNameDraft(event.target.value)}
+              onChange={e => setNameDraft(e.target.value)}
               disabled={saving}
-              autoComplete="name"
+              className="field-input"
               maxLength={100}
             />
-          </div>
+          </Field>
 
-          <div className="profile-field">
-            <label htmlFor="profile-phone">Phone</label>
+          <Field label="Phone">
             <input
               id="profile-phone"
               type="tel"
               value={phoneDraft}
-              onChange={(event) => setPhoneDraft(event.target.value)}
+              onChange={e => setPhoneDraft(e.target.value)}
               disabled={saving}
               placeholder="Add a phone number"
-              autoComplete="tel"
-              maxLength={32}
+              className="field-input"
             />
-          </div>
+          </Field>
 
-          <div className="profile-field">
-            <label>Email</label>
-            <div className="profile-field__readonly">{profile.email}</div>
-          </div>
+          <Field label="Email">
+            <p className="text-white font-mono text-sm">{profile?.email}</p>
+          </Field>
 
-          <div className="profile-field">
-            <label>Member since</label>
-            <div className="profile-field__readonly">
-              {formatDate(profile.created_at)}
-            </div>
-          </div>
+          <Field label="Member since">
+            <p className="text-white/60 text-sm">{formatDate(profile?.created_at)}</p>
+          </Field>
 
           {dirty ? (
-            <div className="profile-card__actions">
-              <button
-                type="button"
-                className="profile-btn profile-btn--ghost"
-                onClick={handleCancel}
-                disabled={saving}
-              >
+            <div className="flex gap-2 justify-end pt-1">
+              <button onClick={handleCancel} disabled={saving} className="btn-ghost text-sm px-3 py-1.5">
                 Cancel
               </button>
-              <button
-                type="button"
-                className="profile-btn profile-btn--primary"
-                onClick={handleSave}
-                disabled={saving || !nameDraft.trim()}
-              >
+              <button onClick={handleSave} disabled={saving || !nameDraft.trim()} className="btn-yellow text-sm px-4 py-1.5">
                 {saving ? 'Saving…' : 'Save changes'}
               </button>
             </div>
           ) : null}
-        </BorderGlow>
+        </Card>
 
-        <BorderGlow
-          as="section"
-          className="profile-card"
-          glowColor="48 100% 54%"
-          aria-label="Subscription"
-        >
-          <header className="profile-card__head">
-            <h2>Subscription</h2>
+        {/* Subscription */}
+        <Card label="Subscription">
+          <div className="flex items-center justify-between">
+            <span className="text-white font-semibold capitalize">{subscription.status || 'Active'}</span>
             <TierPill tier={subscription.tier} />
-          </header>
-
-          <div className="profile-field">
-            <label>Status</label>
-            <div className="profile-field__readonly profile-field__readonly--capitalize">
-              {subscription.status || 'active'}
-            </div>
           </div>
-
           {subscription.current_period_end ? (
-            <div className="profile-field">
-              <label>Renews</label>
-              <div className="profile-field__readonly">
-                {formatDate(subscription.current_period_end)}
+            <Field label="Renews">
+              <p className="text-white/60 text-sm">{formatDate(subscription.current_period_end)}</p>
+            </Field>
+          ) : null}
+          {subscription.cancel_at_period_end ? (
+            <div className="text-yellow-400/80 bg-yellow-400/8 border border-yellow-400/25 rounded-lg px-3 py-2 text-xs">
+              Plan scheduled to cancel at period end.
+            </div>
+          ) : null}
+        </Card>
+
+        {/* Usage */}
+        <Card label="Usage this month">
+          <div className="flex items-baseline gap-2">
+            <span className="text-4xl font-bold font-mono text-white">{usage.commands_this_month ?? 0}</span>
+            <span className="text-white/30">/</span>
+            <span className="text-white/50 text-lg font-mono">{unlimited ? '∞' : usage.commands_limit ?? 0}</span>
+            <span className="text-white/30 text-xs uppercase tracking-widest ml-1">commands</span>
+          </div>
+          <UsageBar used={usage.commands_this_month} limit={usage.commands_limit} />
+          <p className="text-white/30 text-xs">Resets {formatDate(usage.reset_date)}</p>
+        </Card>
+
+        {/* Preferences */}
+        <Card label="Preferences">
+          <Field label="Default server">
+            <p className="text-white/60 text-sm font-mono">{settings.default_server_id || '—'}</p>
+          </Field>
+          <Field label="Confirm destructive">
+            <p className="text-white/60 text-sm">{settings.confirm_destructive === false ? 'Disabled' : 'Enabled'}</p>
+          </Field>
+          <Field label="Response verbosity">
+            <p className="text-white/60 text-sm capitalize">{settings.response_verbosity || 'normal'}</p>
+          </Field>
+        </Card>
+
+        {/* Telegram integration — spans full width */}
+        <div className="md:col-span-2">
+          <Card label="Integrations">
+            <div className="flex items-start gap-5 p-1">
+              {/* Telegram icon */}
+              <div className="w-12 h-12 rounded-xl bg-[#229ED9]/15 border border-[#229ED9]/25
+                              flex items-center justify-center shrink-0 text-2xl">
+                ✈️
+              </div>
+
+              <div className="flex-1 flex flex-col gap-3">
+                <div>
+                  <h3 className="text-white font-semibold text-sm">Telegram</h3>
+                  {tgLinked ? (
+                    <p className="text-green-400 text-sm mt-0.5">
+                      ✅ Connected{tgUsername ? ` as ${tgUsername}` : ''}
+                    </p>
+                  ) : (
+                    <p className="text-white/40 text-sm mt-0.5">
+                      Receive alerts and chat with your servers via Telegram bot.
+                    </p>
+                  )}
+                </div>
+
+                {tgLinked && (
+                  <p className="text-white/30 text-xs">
+                    Send <code>/servers</code> to your bot to get started.
+                  </p>
+                )}
+
+                {tgMessage && (
+                  <div className="text-yellow-400/80 bg-yellow-400/8 border border-yellow-400/20
+                                  rounded-lg px-3 py-2 text-xs leading-relaxed">
+                    {tgMessage}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  {tgLinked ? (
+                    <button
+                      id="telegram-disconnect-btn"
+                      onClick={handleTgUnlink}
+                      disabled={tgUnlinking}
+                      className="btn-ghost text-sm px-4 py-1.5"
+                    >
+                      {tgUnlinking ? 'Disconnecting…' : 'Disconnect'}
+                    </button>
+                  ) : (
+                    <button
+                      id="telegram-connect-btn"
+                      onClick={handleTgConnect}
+                      disabled={tgConnecting}
+                      className="btn-yellow text-sm px-5 py-1.5"
+                    >
+                      {tgConnecting ? 'Waiting for link…' : 'Connect Telegram'}
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
-          ) : null}
+          </Card>
+        </div>
 
-          {subscription.cancel_at_period_end ? (
-            <div className="profile-subscription-note">
-              Your plan is scheduled to cancel at the end of the period.
-            </div>
-          ) : null}
-        </BorderGlow>
-
-        <BorderGlow
-          as="section"
-          className="profile-card"
-          glowColor="48 100% 54%"
-          aria-label="Usage"
-        >
-          <header className="profile-card__head">
-            <h2>Usage this month</h2>
-          </header>
-
-          <div className="profile-usage-row">
-            <span className="profile-usage-value">
-              {usage.commands_this_month ?? 0}
-            </span>
-            <span className="profile-usage-divider">/</span>
-            <span className="profile-usage-limit">
-              {unlimited ? 'Unlimited' : usage.commands_limit ?? 0}
-            </span>
-            <span className="profile-usage-label">commands</span>
-          </div>
-
-          <UsageBar used={usage.commands_this_month} limit={usage.commands_limit} />
-
-          <p className="profile-usage-reset">
-            Resets {formatDate(usage.reset_date)}
-          </p>
-        </BorderGlow>
-
-        <BorderGlow
-          as="section"
-          className="profile-card"
-          glowColor="48 100% 54%"
-          aria-label="Preferences"
-        >
-          <header className="profile-card__head">
-            <h2>Preferences</h2>
-          </header>
-
-          <div className="profile-field">
-            <label>Default server</label>
-            <div className="profile-field__readonly">
-              {settings.default_server_id || 'Not set'}
-            </div>
-          </div>
-
-          <div className="profile-field">
-            <label>Confirm destructive commands</label>
-            <div className="profile-field__readonly">
-              {settings.confirm_destructive === false ? 'Disabled' : 'Enabled'}
-            </div>
-          </div>
-
-          <div className="profile-field">
-            <label>Response verbosity</label>
-            <div className="profile-field__readonly profile-field__readonly--capitalize">
-              {settings.response_verbosity || 'normal'}
-            </div>
-          </div>
-        </BorderGlow>
-      </section>
+      </div>
     </main>
   )
 }
-
-export default ProfilePage

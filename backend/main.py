@@ -13,6 +13,8 @@ from routes.server.servers import ServerRouter
 from routes.agents.agents import router as AgentsRouter
 from routes.notifications.notifications import NotificationRouter
 from routes.teams.teams import TeamRouter
+from routes.telegram.telegram import TelegramRouter
+import services.telegram_service as telegram_service
 
 
 logger = logging.getLogger(__name__)
@@ -34,6 +36,16 @@ async def lifespan(app: FastAPI):
             logger.info("anomaly poller background task started")
         except Exception as exc:
             logger.error("failed to start anomaly poller: %s", exc)
+
+    # Register Telegram webhook if configured
+    public_url = os.getenv("PUBLIC_URL")
+    if public_url and os.getenv("TELEGRAM_BOT_TOKEN"):
+        try:
+            await telegram_service.register_webhook(public_url)
+        except Exception as exc:
+            logger.warning("Telegram webhook registration failed: %s", exc)
+    else:
+        logger.info("Telegram webhook skipped (PUBLIC_URL or TELEGRAM_BOT_TOKEN not set)")
 
     try:
         yield
@@ -79,6 +91,7 @@ app.include_router(ServerRouter, prefix="/api/v1/servers", tags=["Servers (BYOS)
 app.include_router(AgentsRouter, prefix="/api/v1/agents", tags=["Agents"])
 app.include_router(NotificationRouter, prefix="/api/v1/notifications", tags=["Notifications"])
 app.include_router(TeamRouter, prefix="/api/v1/teams", tags=["Teams"])
+app.include_router(TelegramRouter, prefix="/api/v1/telegram", tags=["Telegram"])
 
 
 @app.get("/")

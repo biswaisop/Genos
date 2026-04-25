@@ -166,6 +166,22 @@ async def _fire_anomaly(server: ServerInDB, metric: str, value: float) -> None:
         except Exception as exc:
             logger.error("failed to create anomaly notification for %s: %s", user_id, exc)
 
+        # Also push a Telegram alert if the user has linked their account
+        try:
+            from core.userutils import getuserbyid
+            from services.telegram_service import send_alert as tg_alert
+            user = await getuserbyid(user_id)
+            if user and user.telegram_chat_id:
+                await tg_alert(
+                    chat_id=user.telegram_chat_id,
+                    server_name=payload["server_name"],
+                    metric=payload["metric"],
+                    value=payload["value"],
+                    threshold=payload.get("threshold"),
+                )
+        except Exception as exc:
+            logger.error("failed to send Telegram alert for %s: %s", user_id, exc)
+
 
 async def _evaluate_metric(
     server: ServerInDB,

@@ -24,6 +24,8 @@ sessions_collection = db["Sessions"]
 notifications_collection = db["Notifications"]
 teams_collection = db["Teams"]
 server_metrics_collection = db["ServerMetrics"]
+telegram_link_tokens_collection = db["TelegramLinkTokens"]
+telegram_sessions_collection    = db["TelegramSessions"]
 
 async def create_indexes():
     """Create essential asynchronous indexes upon startup."""
@@ -60,6 +62,19 @@ async def create_indexes():
     # Server metrics indexes
     await server_metrics_collection.create_index(
         [("server_id", ASCENDING), ("polled_at", DESCENDING)]
+    )
+
+    # Telegram link tokens — unique on token, TTL auto-deletes expired docs
+    await telegram_link_tokens_collection.create_index(
+        [("token", ASCENDING)], unique=True
+    )
+    await telegram_link_tokens_collection.create_index(
+        [("expires_at", ASCENDING)], expireAfterSeconds=0
+    )
+
+    # Telegram sessions — one session per Telegram chat
+    await telegram_sessions_collection.create_index(
+        [("chat_id", ASCENDING)], unique=True
     )
 
 def getdb():

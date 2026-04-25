@@ -341,3 +341,66 @@
   0% { background-position: 200% 0; }
   100% { background-position: -200% 0; }
 }
+
+/* ── Telegram integration card ─────────────────────────────────────────────── */
+
+.profile-telegram {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.profile-telegram__icon {
+  font-size: 28px;
+  line-height: 1;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.profile-telegram__body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 1;
+}
+
+.profile-telegram__status {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.profile-telegram__status--linked {
+  color: #86efac;
+}
+
+.profile-telegram__hint {
+  margin: 0;
+  font-size: 13px;
+  color: var(--text);
+  line-height: 1.5;
+}
+
+.profile-telegram__hint code {
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  background: rgba(255,255,255,0.06);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+
+.profile-telegram__message {
+  margin: 0;
+  font-size: 12px;
+  color: #fde68a;
+  background: rgba(250, 204, 21, 0.08);
+  border: 1px solid rgba(250, 204, 21, 0.25);
+  padding: 8px 10px;
+  border-radius: 8px;
+  line-height: 1.45;
+}
+
+.profile-card__actions--inline {
+  justify-content: flex-start;
+  margin-top: 0;
+}

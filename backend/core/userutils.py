@@ -32,6 +32,14 @@ async def getuserbyid(id: str) -> UserInDB | None:
         return UserInDB(**user_data)
     return None
 
+async def get_user_by_chat_id(chat_id: int) -> UserInDB | None:
+    """Find a user whose Telegram account is linked via chat_id."""
+    user_data = await users_collection.find_one({"telegram_chat_id": chat_id})
+    if user_data:
+        user_data["_id"] = str(user_data["_id"])
+        return UserInDB(**user_data)
+    return None
+
 async def updateuser(id: str, update_data: dict) -> bool:
     """Updates user fields in the DB securely."""
     if not update_data:

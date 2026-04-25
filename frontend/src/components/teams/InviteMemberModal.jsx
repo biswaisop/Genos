@@ -2,134 +2,161 @@ import { useEffect, useMemo, useState } from 'react'
 import { inviteTeamMember } from '../../lib/teamsApi'
 
 const ROLE_OPTIONS = [
-  { value: 'admin', label: 'Admin — manage members and servers' },
-  { value: 'operator', label: 'Operator — read/write, no destructive commands' },
-  { value: 'viewer', label: 'Viewer — read-only access' },
+  { value: 'admin',    label: 'Admin',    desc: 'Manage members & servers' },
+  { value: 'operator', label: 'Operator', desc: 'Read/write, no destructive' },
+  { value: 'viewer',   label: 'Viewer',   desc: 'Read-only access' },
 ]
 
-function InviteMemberModal({ isOpen, onClose, teamId, teamServers = [], onInvited }) {
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState('viewer')
-  const [selectedServers, setSelectedServers] = useState([])
-  const [busy, setBusy] = useState(false)
-  const [error, setError] = useState('')
+export default function InviteMemberModal({ isOpen, onClose, teamId, teamServers = [], onInvited }) {
+  const [email, setEmail]           = useState('')
+  const [role, setRole]             = useState('viewer')
+  const [selectedServers, setSel]   = useState([])
+  const [busy, setBusy]             = useState(false)
+  const [error, setError]           = useState('')
   const token = useMemo(
     () => (typeof window !== 'undefined' ? localStorage.getItem('genos_access_token') : null),
     [],
   )
 
   useEffect(() => {
-    if (!isOpen) {
-      setEmail('')
-      setRole('viewer')
-      setSelectedServers([])
-      setError('')
-      setBusy(false)
-    }
+    if (!isOpen) { setEmail(''); setRole('viewer'); setSel([]); setError(''); setBusy(false) }
   }, [isOpen])
 
   if (!isOpen) return null
 
-  function toggleServer(serverId) {
-    setSelectedServers((prev) => (
-      prev.includes(serverId)
-        ? prev.filter((id) => id !== serverId)
-        : [...prev, serverId]
-    ))
+  function toggleServer(id) {
+    setSel(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id])
   }
 
-  async function handleSubmit(event) {
-    event.preventDefault()
+  async function handleSubmit(e) {
+    e.preventDefault()
     if (!token || !email.trim()) return
     try {
-      setBusy(true)
-      setError('')
-      await inviteTeamMember(token, teamId, {
-        email: email.trim(),
-        role,
-        server_ids: selectedServers,
-      })
-      onInvited?.()
-      onClose?.()
+      setBusy(true); setError('')
+      await inviteTeamMember(token, teamId, { email: email.trim(), role, server_ids: selectedServers })
+      onInvited?.(); onClose?.()
     } catch (err) {
       setError(err?.message || 'Could not send invite')
-    } finally {
-      setBusy(false)
-    }
+    } finally { setBusy(false) }
   }
 
   return (
-    <div className="modal-backdrop" role="dialog" aria-modal="true">
-      <div className="modal-panel">
-        <div className="modal-panel__header">
-          <h3>Invite a teammate</h3>
-          <button type="button" className="modal-close" onClick={onClose} aria-label="Close">
+    /* Backdrop */
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{ background: 'rgba(0,0,0,0.75)', backdropFilter: 'blur(4px)' }}
+      onClick={e => { if (e.target === e.currentTarget) onClose?.() }}
+      role="dialog"
+      aria-modal="true"
+    >
+      <div className="glow-card w-full max-w-md animate-fade-in flex flex-col gap-5 p-6">
+
+        {/* Header */}
+        <div className="flex items-center justify-between">
+          <h3 className="text-white font-semibold text-base">Invite a teammate</h3>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close"
+            className="w-8 h-8 rounded-lg flex items-center justify-center text-white/40
+                       hover:bg-white/8 hover:text-white transition-colors text-xl leading-none"
+          >
             ×
           </button>
         </div>
 
-        <form onSubmit={handleSubmit} className="invite-form">
-          <label>
-            Email
+        <form onSubmit={handleSubmit} className="flex flex-col gap-5">
+
+          {/* Email */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="invite-email"
+              className="text-xs font-medium uppercase tracking-wide text-white/30">
+              Email
+            </label>
             <input
+              id="invite-email"
               type="email"
               placeholder="teammate@example.com"
               value={email}
-              onChange={(event) => setEmail(event.target.value)}
+              onChange={e => setEmail(e.target.value)}
               required
+              autoFocus
+              className="field-input"
             />
-          </label>
+          </div>
 
-          <label>
-            Role
-            <select value={role} onChange={(event) => setRole(event.target.value)}>
-              {ROLE_OPTIONS.map((opt) => (
-                <option key={opt.value} value={opt.value}>{opt.label}</option>
+          {/* Role */}
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor="invite-role"
+              className="text-xs font-medium uppercase tracking-wide text-white/30">
+              Role
+            </label>
+            <div className="grid grid-cols-3 gap-2">
+              {ROLE_OPTIONS.map(o => (
+                <button
+                  key={o.value}
+                  type="button"
+                  onClick={() => setRole(o.value)}
+                  className={`flex flex-col items-start gap-0.5 p-3 rounded-xl border text-left
+                              transition-all duration-150 ${
+                    role === o.value
+                      ? 'border-brand-yellow/50 bg-brand-yellow/10 text-brand-yellow'
+                      : 'border-brand-border bg-brand-black-raised text-white/50 hover:border-white/20'
+                  }`}
+                >
+                  <span className="font-semibold text-sm">{o.label}</span>
+                  <span className={`text-[10px] leading-snug ${
+                    role === o.value ? 'text-brand-yellow/70' : 'text-white/30'
+                  }`}>{o.desc}</span>
+                </button>
               ))}
-            </select>
-          </label>
+            </div>
+          </div>
 
-          <div className="invite-form__servers">
-            <div className="invite-form__label">Servers shared with this member</div>
+          {/* Server access */}
+          <div className="flex flex-col gap-2">
+            <label className="text-xs font-medium uppercase tracking-wide text-white/30">
+              Server access
+            </label>
             {teamServers.length === 0 ? (
-              <p className="invite-form__hint">
-                Share servers with the team first, then assign them here.
+              <p className="text-white/25 text-xs py-2">
+                Share servers with the team first.
               </p>
             ) : (
-              <>
-                {teamServers.map((server) => (
-                  <label key={server.server_id} className="invite-form__server">
+              <div className="flex flex-col gap-2 max-h-36 overflow-y-auto pr-1">
+                {teamServers.map(s => (
+                  <label key={s.server_id} className="flex items-center gap-2.5 cursor-pointer group">
                     <input
                       type="checkbox"
-                      checked={selectedServers.includes(server.server_id)}
-                      onChange={() => toggleServer(server.server_id)}
+                      checked={selectedServers.includes(s.server_id)}
+                      onChange={() => toggleServer(s.server_id)}
+                      className="accent-brand-yellow"
                     />
-                    <span>{server.name || server.server_id}</span>
+                    <span className="text-white/60 text-sm group-hover:text-white transition-colors">
+                      {s.name || s.server_id}
+                    </span>
                   </label>
                 ))}
-                <p className="invite-form__hint">
-                  Leave everything unchecked to grant access to all team servers.
+                <p className="text-white/25 text-xs mt-1">
+                  Leave all unchecked to grant access to all team servers.
                 </p>
-              </>
+              </div>
             )}
           </div>
 
-          {error ? <p className="invite-form__error">{error}</p> : null}
+          {error && (
+            <p className="text-red-400 bg-red-500/10 border border-red-500/25 rounded-lg
+                          px-3 py-2 text-sm">
+              {error}
+            </p>
+          )}
 
-          <div className="invite-form__actions">
-            <button
-              type="button"
-              className="dashboard-add-btn dashboard-add-btn--ghost"
-              onClick={onClose}
-              disabled={busy}
-            >
+          {/* Actions */}
+          <div className="flex gap-2 justify-end pt-1">
+            <button type="button" onClick={onClose} disabled={busy} className="btn-ghost text-sm px-4 py-2">
               Cancel
             </button>
-            <button
-              type="submit"
-              className="dashboard-add-btn"
-              disabled={busy || !email.trim()}
-            >
+            <button type="submit" disabled={busy || !email.trim()} className="btn-yellow text-sm px-5 py-2">
               {busy ? 'Sending…' : 'Send invite'}
             </button>
           </div>
@@ -138,5 +165,3 @@ function InviteMemberModal({ isOpen, onClose, teamId, teamServers = [], onInvite
     </div>
   )
 }
-
-export default InviteMemberModal
